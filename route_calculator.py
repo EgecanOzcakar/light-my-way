@@ -21,17 +21,20 @@ import math
 import os
 import webbrowser
 from datetime import datetime, timedelta
+from functools import lru_cache
 
 import requests
 
 # --- Configuration for public services ---
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 OSRM_URL = "http://router.project-osrm.org/route/v1/driving/"  # Public demo server
 USER_AGENT = (
     "LightMyWay-RouteCalculator/1.0 (https://github.com/yourusername/light-my-way)"
 )
 
 
+@lru_cache(maxsize=128)
 def geocode(location_name):
     """
     Geocode a location name to (lat, lon) using Nominatim.
@@ -50,6 +53,38 @@ def geocode(location_name):
     except requests.RequestException as e:
         print(f"ERROR: Geocoding failed for '{location_name}': {e}")
         return None
+
+
+@lru_cache(maxsize=128)
+def reverse_geocode(lat, lon):
+    """
+    Reverse geocode (lat, lon) to a display name using Nominatim.
+    Returns a location string or None on failure.
+    """
+    params = {"lat": lat, "lon": lon, "format": "json", "addressdetails": 1}
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        resp = requests.get(
+            NOMINATIM_REVERSE_URL, params=params, headers=headers, timeout=6
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data and "display_name" in data:
+            # The display_name can be very long, so we try to get a shorter version
+            address = data.get("address", {})
+            road = address.get("road")
+            city = address.get("city") or address.get("town") or address.get("village")
+            state = address.get("state")
+            country = address.get("country")
+
+            parts = [part for part in [road, city, state, country] if part]
+            if parts:
+                return ", ".join(parts)
+            return data["display_name"]
+        return "Unknown location"
+    except requests.RequestException as e:
+        print(f"ERROR: Reverse geocoding failed for ({lat}, {lon}): {e}")
+        return "Unknown location"
 
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -137,12 +172,13 @@ def get_route_and_intervals_no_api_key(
         start_time = datetime.now()
 
         # origin
+        origin_address = reverse_geocode(polyline_coords[0][0], polyline_coords[0][1])
         interval_locations.append(
             {
-                "absolute_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "absolute_time": start_time.strftime("%A, %Y-%m-%d %H:%M:%S"),
                 "time_elapsed_minutes": 0,
                 "location": polyline_coords[0],
-                "description": "Origin",
+                "description": f"Origin: {origin_address}",
             }
         )
 
@@ -177,14 +213,15 @@ def get_route_and_intervals_no_api_key(
                 if loc is None:
                     loc = polyline_coords[-1]
 
+            address = reverse_geocode(loc[0], loc[1])
             interval_locations.append(
                 {
                     "absolute_time": (
                         start_time + timedelta(seconds=int(elapsed))
-                    ).strftime("%Y-%m-%d %H:%M:%S"),
+                    ).strftime("%A, %Y-%m-%d %H:%M:%S"),
                     "time_elapsed_minutes": int(elapsed / 60),
                     "location": loc,
-                    "description": f"Approximate location after {int(elapsed / 60)} minutes",
+                    "description": f"Approximate location after {int(elapsed / 60)} minutes: {address}",
                 }
             )
 
@@ -197,14 +234,17 @@ def get_route_and_intervals_no_api_key(
             abs(last_loc[0] - polyline_coords[-1][0]) > 1e-6
             or abs(last_loc[1] - polyline_coords[-1][1]) > 1e-6
         ):
+            destination_address = reverse_geocode(
+                polyline_coords[-1][0], polyline_coords[-1][1]
+            )
             interval_locations.append(
                 {
                     "absolute_time": (
                         start_time + timedelta(seconds=int(total_duration_seconds))
-                    ).strftime("%Y-%m-%d %H:%M:%S"),
+                    ).strftime("%A, %Y-%m-%d %H:%M:%S"),
                     "time_elapsed_minutes": int(total_duration_seconds / 60),
                     "location": polyline_coords[-1],
-                    "description": "Destination",
+                    "description": f"Destination: {destination_address}",
                 }
             )
 
@@ -302,15 +342,11 @@ def generate_map_html(
     function buildScheduleTable(intervals) {{
       var container = document.getElementById('schedule-container');
       var table = document.createElement('table');
-      table.innerHTML = '<tr><th>Elapsed (min)</th><th>Time</th><th>Latitude</th><th>Longitude</th><th>Description</th></tr>';
+      table.innerHTML = '<tr><th>Elapsed (min)</th><th>Time</th><th>Approximate Location</th></tr>';
       intervals.forEach(function(it) {{
         var row = document.createElement('tr');
-        var lat = it.location && it.location[0] ? it.location[0].toFixed(6) : '';
-        var lon = it.location && it.location[1] ? it.location[1].toFixed(6) : '';
         row.innerHTML = '<td>' + it.time_elapsed_minutes + '</td>' +
                         '<td>' + it.absolute_time + '</td>' +
-                        '<td>' + lat + '</td>' +
-                        '<td>' + lon + '</td>' +
                         '<td>' + it.description + '</td>';
         table.appendChild(row);
       }});
@@ -430,7 +466,7 @@ if __name__ == "__main__":
     for it in intervals:
         loc = it["location"]
         print(
-            f"  {it['absolute_time']} (+{it['time_elapsed_minutes']} min) -> {loc[0]:.6f}, {loc[1]:.6f} - {it['description']}"
+            f"  {it['absolute_time']} (+{it['time_elapsed_minutes']} min) -> {it['description']}"
         )
 
     if poly_coords:

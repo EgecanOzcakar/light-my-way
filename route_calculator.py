@@ -87,6 +87,55 @@ def reverse_geocode(lat, lon):
         return "Unknown location"
 
 
+def get_weather_icon(precipitation):
+    """
+    Returns a unicode character to represent the weather condition.
+    """
+    if precipitation is None:
+        return ""
+    if precipitation == 0:
+        return "☀️"
+    elif 0 < precipitation < 1:
+        return "☁️"
+    else:  # precipitation >= 1
+        return "🌧️"
+
+
+def get_weather_forecast(lat, lon, time_str):
+    """
+    Get weather forecast for a specific lat, lon, and time using Open-Meteo.
+    Returns a dictionary with temperature and precipitation or None.
+    """
+    try:
+        # The time_str is in format "%A, %Y-%m-%d %H:%M:%S"
+        # The API needs YYYY-MM-DD
+        dt_obj = datetime.strptime(time_str, "%A, %Y-%m-%d %H:%M:%S")
+        date_str = dt_obj.strftime("%Y-%m-%d")
+
+        url = f"https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "hourly": "temperature_2m,precipitation",
+            "start_date": date_str,
+            "end_date": date_str,
+        }
+        headers = {"User-Agent": USER_AGENT}
+        resp = requests.get(url, params=params, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data and "hourly" in data:
+            hour_index = dt_obj.hour
+            temp = data["hourly"]["temperature_2m"][hour_index]
+            precip = data["hourly"]["precipitation"][hour_index]
+            return {"temperature": temp, "precipitation": precip}
+        return None
+    except (requests.RequestException, KeyError, IndexError, ValueError) as e:
+        print(f"WARN: Could not fetch weather for ({lat}, {lon}) at {time_str}: {e}")
+        return None
+
+
 def haversine(lat1, lon1, lat2, lon2):
     """
     Haversine distance in meters.
@@ -173,12 +222,19 @@ def get_route_and_intervals_no_api_key(
 
         # origin
         origin_address = reverse_geocode(polyline_coords[0][0], polyline_coords[0][1])
+        start_time_str = start_time.strftime("%A, %Y-%m-%d %H:%M:%S")
+        weather = get_weather_forecast(
+            polyline_coords[0][0], polyline_coords[0][1], start_time_str
+        )
+        if weather:
+            weather["icon"] = get_weather_icon(weather["precipitation"])
         interval_locations.append(
             {
-                "absolute_time": start_time.strftime("%A, %Y-%m-%d %H:%M:%S"),
+                "absolute_time": start_time_str,
                 "time_elapsed_minutes": 0,
                 "location": polyline_coords[0],
                 "description": f"Origin: {origin_address}",
+                "weather": weather,
             }
         )
 
@@ -214,14 +270,19 @@ def get_route_and_intervals_no_api_key(
                     loc = polyline_coords[-1]
 
             address = reverse_geocode(loc[0], loc[1])
+            time_at_loc_str = (start_time + timedelta(seconds=int(elapsed))).strftime(
+                "%A, %Y-%m-%d %H:%M:%S"
+            )
+            weather = get_weather_forecast(loc[0], loc[1], time_at_loc_str)
+            if weather:
+                weather["icon"] = get_weather_icon(weather["precipitation"])
             interval_locations.append(
                 {
-                    "absolute_time": (
-                        start_time + timedelta(seconds=int(elapsed))
-                    ).strftime("%A, %Y-%m-%d %H:%M:%S"),
+                    "absolute_time": time_at_loc_str,
                     "time_elapsed_minutes": int(elapsed / 60),
                     "location": loc,
                     "description": f"Approximate location after {int(elapsed / 60)} minutes: {address}",
+                    "weather": weather,
                 }
             )
 
@@ -237,14 +298,21 @@ def get_route_and_intervals_no_api_key(
             destination_address = reverse_geocode(
                 polyline_coords[-1][0], polyline_coords[-1][1]
             )
+            dest_time_str = (
+                start_time + timedelta(seconds=int(total_duration_seconds))  # noqa: E203
+            ).strftime("%A, %Y-%m-%d %H:%M:%S")
+            weather = get_weather_forecast(
+                polyline_coords[-1][0], polyline_coords[-1][1], dest_time_str
+            )
+            if weather:
+                weather["icon"] = get_weather_icon(weather["precipitation"])
             interval_locations.append(
                 {
-                    "absolute_time": (
-                        start_time + timedelta(seconds=int(total_duration_seconds))
-                    ).strftime("%A, %Y-%m-%d %H:%M:%S"),
+                    "absolute_time": dest_time_str,
                     "time_elapsed_minutes": int(total_duration_seconds / 60),
                     "location": polyline_coords[-1],
                     "description": f"Destination: {destination_address}",
+                    "weather": weather,
                 }
             )
 
@@ -342,12 +410,17 @@ def generate_map_html(
     function buildScheduleTable(intervals) {{
       var container = document.getElementById('schedule-container');
       var table = document.createElement('table');
-      table.innerHTML = '<tr><th>Elapsed (min)</th><th>Time</th><th>Approximate Location</th></tr>';
+      table.innerHTML = '<tr><th>Elapsed (min)</th><th>Time</th><th>Approximate Location</th><th>Temp (°C)</th><th>Precip. (mm)</th></tr>';
       intervals.forEach(function(it) {{
         var row = document.createElement('tr');
+        var temp = it.weather ? it.weather.temperature : 'N/A';
+        var precip = it.weather ? it.weather.precipitation : 'N/A';
+        var icon = it.weather ? it.weather.icon : '';
         row.innerHTML = '<td>' + it.time_elapsed_minutes + '</td>' +
                         '<td>' + it.absolute_time + '</td>' +
-                        '<td>' + it.description + '</td>';
+                        '<td>' + it.description + '</td>' +
+                        '<td>' + icon + ' ' + temp + '</td>' +
+                        '<td>' + precip + '</td>';
         table.appendChild(row);
       }});
       container.appendChild(table);
@@ -371,7 +444,12 @@ def generate_map_html(
       var lat = it.location[0], lon = it.location[1];
       var marker = L.marker([lat, lon], {{ icon: iconOptions, riseOnHover: true }}).addTo(map);
 
-      var popupHtml = '<b>' + it.description + '</b><br>Time: ' + it.absolute_time + '<br>Elapsed: ' + it.time_elapsed_minutes + ' min';
+      var weatherInfo = '';
+      if (it.weather) {{
+        var icon = it.weather.icon || '';
+        weatherInfo = '<br>Weather: ' + icon + ' ' + it.weather.temperature + '°C, ' + it.weather.precipitation + 'mm precip.';
+      }}
+      var popupHtml = '<b>' + it.description + '</b><br>Time: ' + it.absolute_time + '<br>Elapsed: ' + it.time_elapsed_minutes + ' min' + weatherInfo;
       marker.bindPopup(popupHtml);
 
       // tooltip for quick glance
@@ -465,8 +543,12 @@ if __name__ == "__main__":
     print("Intervals:")
     for it in intervals:
         loc = it["location"]
+        weather_str = ""
+        if it["weather"]:
+            icon = it["weather"].get("icon", "")
+            weather_str = f" (Weather: {icon} {it['weather']['temperature']}°C, {it['weather']['precipitation']}mm precip.)"
         print(
-            f"  {it['absolute_time']} (+{it['time_elapsed_minutes']} min) -> {it['description']}"
+            f"  {it['absolute_time']} (+{it['time_elapsed_minutes']} min) -> {it['description']}{weather_str}"
         )
 
     if poly_coords:

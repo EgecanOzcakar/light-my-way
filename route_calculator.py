@@ -1,4 +1,6 @@
+import json
 import math
+import os
 from datetime import datetime, timedelta
 
 import requests
@@ -26,7 +28,9 @@ def geocode(location_name):
     }
     headers = {"User-Agent": USER_AGENT}
     try:
-        response = requests.get(NOMINATIM_URL, params=params, headers=headers)
+        response = requests.get(
+            NOMINATIM_URL, params=params, headers=headers, timeout=5
+        )
         response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
         data = response.json()
         if data and len(data) > 0:
@@ -73,11 +77,11 @@ def get_route_and_intervals_no_api_key(
         interval_minutes (int): The time interval in minutes for location approximations.
 
     Returns:
-        tuple: (list of interval locations, total duration in seconds, total distance in meters)
-               or (error message string, None, None) if an error occurs.
+        tuple: (list of interval locations, total duration in seconds, total distance in meters, polyline_coords)
+               or (error message string, None, None, None) if an error occurs.
     """
     if not (1 <= interval_minutes <= 1440):  # Max 24 hours
-        return "Interval minutes must be between 1 and 1440.", None, None
+        return "Interval minutes must be between 1 and 1440.", None, None, None
 
     print(f"Attempting to geocode origin: '{origin_name}'...")
     origin_coords = geocode(origin_name)  # (lat, lon)
@@ -85,9 +89,9 @@ def get_route_and_intervals_no_api_key(
     destination_coords = geocode(destination_name)  # (lat, lon)
 
     if not origin_coords:
-        return f"Failed to geocode origin: '{origin_name}'.", None, None
+        return f"Failed to geocode origin: '{origin_name}'.", None, None, None
     if not destination_coords:
-        return f"Failed to geocode destination: '{destination_name}'.", None, None
+        return f"Failed to geocode destination: '{destination_name}'.", None, None, None
 
     print(f"Origin coordinates: {origin_coords}")
     print(f"Destination coordinates: {destination_coords}")
@@ -115,8 +119,9 @@ def get_route_and_intervals_no_api_key(
                     "OSRM could not find a route between the specified points. Check if points are on a drivable road.",
                     None,
                     None,
+                    None,
                 )
-            return "OSRM did not return any route data.", None, None
+            return "OSRM did not return any route data.", None, None, None
 
         route = route_data["routes"][0]
         total_duration_seconds = route["duration"]  # Duration in seconds
@@ -125,12 +130,12 @@ def get_route_and_intervals_no_api_key(
         # OSRM GeoJSON coordinates are [longitude, latitude]. Convert to [latitude, longitude].
         # Also, ensure we don't proceed with an empty geometry
         if not route["geometry"] or not route["geometry"]["coordinates"]:
-            return "OSRM returned a route with no geometry.", None, None
+            return "OSRM returned a route with no geometry.", None, None, None
 
         polyline_coords = [[p[1], p[0]] for p in route["geometry"]["coordinates"]]
 
         if not polyline_coords:
-            return "OSRM route geometry is empty after decoding.", None, None
+            return "OSRM route geometry is empty after decoding.", None, None, None
 
         # Calculate cumulative distances along the polyline using Haversine
         # This is more accurate than relying solely on OSRM's total distance
@@ -150,6 +155,7 @@ def get_route_and_intervals_no_api_key(
         if total_duration_seconds <= 0:
             return (
                 "Route duration is zero or negative, cannot calculate intervals.",
+                None,
                 None,
                 None,
             )
@@ -262,23 +268,163 @@ def get_route_and_intervals_no_api_key(
                 }
             )
 
-        return interval_locations, total_duration_seconds, total_distance_meters
+        return (
+            interval_locations,
+            total_duration_seconds,
+            total_distance_meters,
+            polyline_coords,
+        )
 
     except requests.exceptions.Timeout:
         print("ERROR: OSRM request timed out. The server might be busy or unreachable.")
-        return "Failed to retrieve route: OSRM server timed out.", None, None
+        return "Failed to retrieve route: OSRM server timed out.", None, None, None
     except requests.exceptions.RequestException as e:
         print(f"ERROR: Failed to fetch route from OSRM: {e}")
         print(
             "Please ensure you have an active internet connection and are not exceeding rate limits of public demo servers."
         )
-        return "Failed to retrieve route due to network or service error.", None, None
+        return (
+            "Failed to retrieve route due to network or service error.",
+            None,
+            None,
+            None,
+        )
     except Exception as e:
         print(f"ERROR: An unexpected error occurred: {e}")
         import traceback
 
         traceback.print_exc()
-        return "An unexpected error occurred during route calculation.", None, None
+        return (
+            "An unexpected error occurred during route calculation.",
+            None,
+            None,
+            None,
+        )
+
+
+def generate_map_html(
+    origin,
+    destination,
+    polyline_coords,
+    interval_locations,
+    output_filename="route_map.html",
+):
+    """
+    Generates an HTML file with a Leaflet map showing the route and interval locations.
+    """
+    # Convert Python list of lists to JSON string for JavaScript
+    js_polyline_coords = json.dumps(polyline_coords)
+    js_interval_locations = json.dumps(interval_locations)
+
+    # Calculate the center of the map for initial view
+    if polyline_coords:
+        lats = [p[0] for p in polyline_coords]
+        lons = [p[1] for p in polyline_coords]
+        center_lat = sum(lats) / len(lats)
+        center_lon = sum(lons) / len(lons)
+    else:
+        # Default to a generic location (e.g., center of Europe) if no polyline is available
+        center_lat, center_lon = 48.8566, 2.3522  # Paris coordinates
+
+    html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Car Route from {origin} to {destination}</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        body {{ margin: 0; padding: 0; font-family: sans-serif; }}
+        h1 {{ text-align: center; margin: 10px 0; }}
+        #mapid {{ height: 800px; width: 100%; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 20px; }};
+        .start-icon-div {{ background-color: green; border-radius: 50%; width: 20px; height: 20px; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; line-height: 1; }}
+        .end-icon-div {{ background-color: red; border-radius: 50%; width: 20px; height: 20px; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; line-height: 1; }}
+        .interval-icon-div {{ background-color: orange; border-radius: 50%; width: 15px; height: 15px; border: 1px solid white; }}
+    </style>
+</head>
+<body>
+    <h1>Car Route from {origin} to {destination}</h1>
+    <div id="mapid"></div>
+
+    <script>
+        var map = L.map('mapid').setView([{center_lat}, {center_lon}], 10);
+
+        L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }}).addTo(map);
+
+        var routeCoords = {js_polyline_coords};
+        var routePolyline = L.polyline(routeCoords, {{color: 'blue', weight: 4, opacity: 0.7}}).addTo(map);
+
+        // Fit map bounds to the route polyline
+        if (routeCoords.length > 0) {{
+            map.fitBounds(routePolyline.getBounds());
+        }} else {{
+            map.setView([{center_lat}, {center_lon}], 10);
+        }}
+
+        var intervalLocations = {js_interval_locations};
+        intervalLocations.forEach(function(interval, index) {{
+            // Skip the very first (origin) and very last (destination) if they are handled separately
+            if (index === 0 || index === intervalLocations.length - 1) return;
+
+            var intervalIcon = L.divIcon({{
+                className: 'interval-icon-div',
+                iconSize: [15, 15]
+            }});
+            var marker = L.marker([interval.location[0], interval.location[1]], {{icon: intervalIcon}}).addTo(map);
+            marker.bindPopup(`<b>${{interval.description}}</b><br>Time: ${{interval.absolute_time}}`);
+        }});
+
+        // Add start and end markers with distinct colors
+        if (routeCoords.length > 0) {{
+            var startIcon = L.divIcon({{
+                className: 'start-icon-div',
+                html: 'S',
+                iconSize: [24, 24]
+            }});
+            L.marker(routeCoords[0], {{icon: startIcon}}).addTo(map).bindPopup('<b>Origin: {origin}</b><br>Start Time: ' + intervalLocations[0].absolute_time);
+
+            var endIcon = L.divIcon({{
+                className: 'end-icon-div',
+                html: 'E',
+                iconSize: [24, 24]
+            }});
+            // Ensure the last interval location is used for destination time if available
+            var arrivalTime = intervalLocations.length > 1 ? intervalLocations[intervalLocations.length - 1].absolute_time : 'N/A';
+            L.marker(routeCoords[routeCoords.length - 1], {{icon: endIcon}}).addTo(map).bindPopup('<b>Destination: {destination}</b><br>Arrival Time: ' + arrivalTime);
+        }}
+    </script>
+</body>
+</html>
+    """
+
+    # Write the map HTML file next to this script and ensure the directory exists.
+    # This avoids assuming a specific project-relative path that may not exist.
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    map_file_path = os.path.join(script_dir, output_filename)
+    try:
+        # Ensure the directory is present (no-op if it already exists).
+        os.makedirs(script_dir, exist_ok=True)
+        # Write using utf-8 encoding for broader character support.
+        with open(map_file_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        print(f"INFO: Map HTML generated successfully at {map_file_path}")
+        return map_file_path
+    except FileNotFoundError as e:
+        print(f"ERROR: Directory for map file not found: {e}")
+        return None
+    except PermissionError as e:
+        print(f"ERROR: Permission denied when writing map file: {e}")
+        return None
+    except OSError as e:
+        print(f"ERROR: Could not write map HTML file due to OS error: {e}")
+        return None
+    except Exception as e:
+        print(f"ERROR: Unexpected error when writing map HTML file: {e}")
+        return None
 
 
 if __name__ == "__main__":
@@ -304,8 +450,11 @@ if __name__ == "__main__":
         interval_minutes = 30
 
     if origin_point and destination_point:
-        intervals, duration, distance = get_route_and_intervals_no_api_key(
-            origin_point, destination_point, interval_minutes
+        # Modified to also return polyline_coords
+        intervals, duration, distance, polyline_coords = (
+            get_route_and_intervals_no_api_key(
+                origin_point, destination_point, interval_minutes
+            )
         )
 
         if isinstance(intervals, str):  # Check if it's an error message
@@ -328,5 +477,29 @@ if __name__ == "__main__":
                 print(
                     f"  Time: {interval['absolute_time']} ({interval['time_elapsed_minutes']} min elapsed), Location (Lat, Lng): {formatted_location}, Description: {interval['description']}"
                 )
+
+            # Generate and open the map
+            if polyline_coords:
+                map_file = generate_map_html(
+                    origin_point, destination_point, polyline_coords, intervals
+                )
+                if map_file:
+                    print(f"\nOpening map in browser: {map_file}")
+                    # In a real environment, you'd use a web browser library or instruct the user
+                    # For this environment, we'll use the provided open tool if available
+                    # import webbrowser
+                    # webbrowser.open(map_file)
+                    # Assuming default_api.open is available for opening local files in the sandbox
+                    # If running outside the sandbox, use webbrowser.open
+                    try:
+                        default_api.open(path_or_url=map_file)
+                    except NameError:  # Fallback if default_api is not defined (e.g., running directly without sandbox tools)
+                        print(
+                            "Warning: `default_api.open` not available. Please open the HTML file manually in your browser."
+                        )
+                else:
+                    print("Failed to generate map HTML.")
+            else:
+                print("Cannot generate map: No polyline coordinates available.")
     else:
         print("Origin and destination cannot be empty.")

@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Light My Way - Route Calculator</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+      animation: slideDown 0.6s ease-out;
+    }
+
+    .header h1 {
+      font-size: 2.5em;
+      font-weight: 700;
+      margin-bottom: 10px;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .header p {
+      font-size: 1.1em;
+      font-weight: 300;
+      opacity: 0.95;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .main-card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+      animation: fadeIn 0.6s ease-out;
+    }
+
+    .map-container {
+      height: 600px;
+      width: 100%;
+      position: relative;
+    }
+
+    #mapid {
+      height: 100%;
+      width: 100%;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      animation: fadeIn 0.6s ease-out;
+    }
+
+    .info-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .card h3 {
+      color: #667eea;
+      font-size: 1.1em;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card h3::before {
+      content: '';
+      width: 4px;
+      height: 4px;
+      background: #667eea;
+      border-radius: 50%;
+      display: block;
+    }
+
+    .stat-item {
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .stat-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .stat-label {
+      color: #666;
+      font-size: 0.9em;
+      font-weight: 500;
+    }
+
+    .stat-value {
+      color: #667eea;
+      font-size: 1.1em;
+      font-weight: 700;
+    }
+
+    .icon {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .schedule-section {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      animation: fadeIn 0.6s ease-out;
+      overflow: hidden;
+    }
+
+    .schedule-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+    }
+
+    .schedule-header h2 {
+      font-size: 1.3em;
+      font-weight: 600;
+    }
+
+    .schedule-container {
+      overflow-x: auto;
+      padding: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95em;
+    }
+
+    thead {
+      background-color: #f8f9fa;
+    }
+
+    th {
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #333;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #f0f0f0;
+      color: #555;
+    }
+
+    tr:hover {
+      background-color: #f8f9fa;
+    }
+
+    .marker-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+
+    .marker-start {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .marker-end {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    .marker-checkpoint {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+
+    .marker-hazard {
+      background-color: #e2e3e5;
+      color: #383d41;
+    }
+
+    .weather-icon {
+      font-size: 1.2em;
+      margin-right: 4px;
+    }
+
+    .weather-good {
+      color: #28a745;
+    }
+
+    .weather-hazard {
+      color: #dc3545;
+    }
+
+    .footer {
+      text-align: center;
+      color: white;
+      padding: 20px;
+      font-size: 0.9em;
+      opacity: 0.8;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9em;
+      transition: all 0.3s ease;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .popover-content {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      font-size: 0.9em;
+    }
+
+    .popover-title {
+      font-weight: 600;
+      color: #667eea;
+      margin-bottom: 6px;
+    }
+
+    .popover-detail {
+      color: #666;
+      margin: 4px 0;
+      line-height: 1.4;
+    }
+
+    .legend {
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 0.9em;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .legend-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .legend-marker {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .marker-green {
+      background-color: green;
+      border: 2px solid white;
+    }
+
+    .marker-red {
+      background-color: red;
+      border: 2px solid white;
+    }
+
+    .marker-orange {
+      background-color: orange;
+      border: 1px solid white;
+    }
+
+    .marker-purple {
+      background-color: purple;
+      border: 1px solid white;
+    }
+
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 1.8em;
+      }
+
+      .content {
+        grid-template-columns: 1fr;
+      }
+
+      .map-container {
+        height: 400px;
+      }
+
+      table {
+        font-size: 0.85em;
+      }
+
+      th, td {
+        padding: 8px;
+      }
+    }
+
+    /* Leaflet Popup Styling */
+    .leaflet-popup-content-wrapper {
+      border-radius: 8px;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .leaflet-popup-content {
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    .leaflet-popup-close-button {
+      color: #667eea;
+      font-size: 1.2em;
+    }
+
+    .no-data {
+      text-align: center;
+      color: #999;
+      padding: 40px 20px;
+      font-style: italic;
+    }
+
+    .loading-state {
+      text-align: center;
+      padding: 40px;
+      color: #667eea;
+    }
+
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.8em;
+      font-weight: 600;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+
+    .tag-start {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .tag-end {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    .tag-checkpoint {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+
+    .tag-hazard {
+      background-color: #f5c6cb;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚗 Light My Way</h1>
+      <p>Interactive Car Route Calculator with Real-Time Weather & Hazard Detection</p>
+    </div>
+
+    <div class="content">
+      <div class="main-card">
+        <div class="map-container">
+          <div id="mapid"></div>
+          <div class="legend" style="position: absolute; bottom: 20px; left: 20px; z-index: 1000;">
+            <div style="font-weight: 600; margin-bottom: 12px; color: #333;">Legend</div>
+            <div class="legend-item">
+              <div class="legend-marker marker-green"></div>
+              <span>Start Point</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-marker marker-red"></div>
+              <span>End Point</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-marker marker-orange"></div>
+              <span>Checkpoint</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-marker marker-purple"></div>
+              <span>Hazard Zone</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar">
+        <div class="card">
+          <h3>Route Summary</h3>
+          <div class="stat-item">
+            <span class="stat-label">Distance</span>
+            <span class="stat-value">—</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Duration</span>
+            <span class="stat-value">—</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Checkpoints</span>
+            <span class="stat-value">—</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Hazards</span>
+            <span class="stat-value">—</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Quick Actions</h3>
+          <div class="button-group">
+            <button class="btn btn-primary" onclick="openPythonApp()">Calculate Route</button>
+          </div>
+          <button class="btn btn-secondary" style="width: 100%;" onclick="resetView()">Reset View</button>
+        </div>
+
+        <div class="card" style="flex-grow: 1;">
+          <h3>About</h3>
+          <div style="font-size: 0.9em; color: #666; line-height: 1.6;">
+            <p style="margin-bottom: 10px;">This tool calculates optimal car routes using <strong>OSRM</strong> and displays real-time weather data and hazard zones.</p>
+            <p><strong>Features:</strong></p>
+            <ul style="margin-left: 15px; margin-top: 8px;">
+              <li>Route optimization</li>
+              <li>Weather forecasts</li>
+              <li>Hazard detection</li>
+              <li>Time scheduling</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="schedule-section" id="scheduleSection" style="display: none;">
+      <div class="schedule-header">
+        <h2>📅 Detailed Schedule</h2>
+      </div>
+      <div class="schedule-container">
+        <table id="scheduleTable">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Location</th>
+              <th>Type</th>
+              <th>Weather</th>
+              <th>Temperature</th>
+              <th>Hazard</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="no-data">
+              <td colspan="6">No route data available. Use the "Calculate Route" button to generate a route.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>💡 <strong>Light My Way</strong> - Making your journeys safer and more efficient</p>
+      <p style="margin-top: 10px; font-size: 0.85em;"><a href="https://github.com/EgecanOzcakar/light-my-way" style="color: white; text-decoration: underline;">View on GitHub</a></p>
+    </div>
+  </div>
+
+  <script>
+    // Initialize map
+    var map = L.map('mapid').setView([38.8566, 35.2433], 6);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }).addTo(map);
+
+    var routePolyline = null;
+    var markers = [];
+
+    // Load and display sample route data if available
+    function loadRouteData() {
+      // This function will be called when the Python script generates data
+      // For now, it shows placeholder functionality
+    }
+
+    function openPythonApp() {
+      alert('Run the Python script to calculate a route:\npython3 route_calculator.py');
+    }
+
+    function resetView() {
+      map.setView([38.8566, 35.2433], 6);
+      clearRoute();
+    }
+
+    function clearRoute() {
+      if (routePolyline) {
+        map.removeLayer(routePolyline);
+        routePolyline = null;
+      }
+      markers.forEach(marker => map.removeLayer(marker));
+      markers = [];
+      document.getElementById('scheduleSection').style.display = 'none';
+    }
+
+    function addMarker(lat, lon, title, type, details) {
+      var colors = {
+        'start': 'green',
+        'end': 'red',
+        'checkpoint': 'orange',
+        'hazard': 'purple'
+      };
+
+      var color = colors[type] || 'blue';
+      var html = '<div style="background-color: ' + color + '; border-radius: 50%; width: 22px; height: 22px; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; line-height: 1;"></div>';
+
+      var marker = L.marker([lat, lon], {
+        icon: L.divIcon({
+          html: html,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+          popupAnchor: [0, -11]
+        })
+      }).addTo(map);
+
+      var popupContent = '<div class="popover-content"><div class="popover-title">' + title + '</div>';
+      if (details) {
+        Object.keys(details).forEach(key => {
+          popupContent += '<div class="popover-detail"><strong>' + key + ':</strong> ' + details[key] + '</div>';
+        });
+      }
+      popupContent += '</div>';
+
+      marker.bindPopup(popupContent);
+      markers.push(marker);
+
+      return marker;
+    }
+
+    function displayRoute(routeData) {
+      clearRoute();
+
+      if (!routeData || !routeData.route_coordinates) {
+        return;
+      }
+
+      // Add route line
+      var latlngs = routeData.route_coordinates.map(coord => [coord[0], coord[1]]);
+      routePolyline = L.polyline(latlngs, {
+        color: '#667eea',
+        weight: 4,
+        opacity: 0.8,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      map.fitBounds(routePolyline.getBounds().pad(0.1));
+
+      // Add markers
+      if (routeData.start_location) {
+        addMarker(
+          routeData.start_location[0],
+          routeData.start_location[1],
+          routeData.start_name || 'Start',
+          'start',
+          {}
+        );
+      }
+
+      if (routeData.end_location) {
+        addMarker(
+          routeData.end_location[0],
+          routeData.end_location[1],
+          routeData.end_name || 'End',
+          'end',
+          {}
+        );
+      }
+
+      if (routeData.checkpoints) {
+        routeData.checkpoints.forEach((cp, idx) => {
+          var details = {
+            'Time': cp.time || '—',
+            'Distance': cp.distance || '—',
+            'Weather': cp.weather || '—'
+          };
+          addMarker(
+            cp.lat,
+            cp.lon,
+            'Checkpoint ' + (idx + 1),
+            cp.hazard ? 'hazard' : 'checkpoint',
+            details
+          );
+        });
+      }
+
+      // Display schedule
+      displaySchedule(routeData);
+    }
+
+    function displaySchedule(routeData) {
+      if (!routeData || !routeData.checkpoints) {
+        return;
+      }
+
+      document.getElementById('scheduleSection').style.display = 'block';
+      var tbody = document.querySelector('#scheduleTable tbody');
+      tbody.innerHTML = '';
+
+      // Add start
+      tbody.innerHTML += '<tr><td>Start</td><td>' + (routeData.start_name || '—') + '</td><td><span class="tag tag-start">START</span></td><td>—</td><td>—</td><td>—</td></tr>';
+
+      // Add checkpoints
+      routeData.checkpoints.forEach((cp, idx) => {
+        var hazardHtml = cp.hazard ? '<span class="tag tag-hazard">YES</span>' : '<span>No</span>';
+        tbody.innerHTML += '<tr><td>' + (cp.time || '—') + '</td><td>' + (cp.location || '—') + '</td><td><span class="tag tag-checkpoint">CP ' + (idx + 1) + '</span></td><td>' + (cp.weather || '—') + '</td><td>' + (cp.temp || '—') + '</td><td>' + hazardHtml + '</td></tr>';
+      });
+
+      // Add end
+      tbody.innerHTML += '<tr><td>End</td><td>' + (routeData.end_name || '—') + '</td><td><span class="tag tag-end">END</span></td><td>—</td><td>—</td><td>—</td></tr>';
+    }
+
+    // Try to load any existing route data
+    loadRouteData();
+  </script>
+</body>
+</html>

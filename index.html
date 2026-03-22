@@ -599,7 +599,18 @@
     }
 
     function openPythonApp() {
-      alert('Run the Python script to calculate a route:\npython3 route_calculator.py');
+      var origin = prompt('Enter origin location (e.g., "Eiffel Tower, Paris"):', '');
+      if (origin === null) return; // User cancelled
+      
+      var destination = prompt('Enter destination location (e.g., "Louvre Museum, Paris"):', '');
+      if (destination === null) return; // User cancelled
+      
+      var intervalStr = prompt('Enter interval in minutes (default: 30):', '30');
+      if (intervalStr === null) return; // User cancelled
+      
+      var interval = parseInt(intervalStr) || 30;
+      
+      alert('Route calculation:\n\n📍 From: ' + origin + '\n📍 To: ' + destination + '\n⏱️ Interval: ' + interval + ' minutes\n\nRun the Python script to calculate:\npython3 route_calculator.py\n\nThen enter these locations when prompted.');
     }
 
     function resetView() {

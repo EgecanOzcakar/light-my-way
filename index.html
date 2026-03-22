@@ -591,26 +591,61 @@
 
     var routePolyline = null;
     var markers = [];
+    var currentRouteData = null;
 
-    // Load and display sample route data if available
+    // Load route data from JSON file
     function loadRouteData() {
-      // This function will be called when the Python script generates data
-      // For now, it shows placeholder functionality
+      fetch('route_data.json')
+        .then(response => {
+          if (!response.ok) throw new Error('No route data found');
+          return response.json();
+        })
+        .then(data => {
+          currentRouteData = data;
+          displayRoute(data);
+          updateSummary(data);
+        })
+        .catch(error => {
+          console.log('Route data not available yet');
+        });
+    }
+
+    function updateSummary(routeData) {
+      document.querySelector('.stat-item:nth-child(1) .stat-value').textContent = 
+        (routeData.distance_km || 0) + ' km';
+      document.querySelector('.stat-item:nth-child(2) .stat-value').textContent = 
+        (routeData.duration_minutes || 0) + ' min';
+      document.querySelector('.stat-item:nth-child(3) .stat-value').textContent = 
+        (routeData.checkpoints ? routeData.checkpoints.length : 0);
+      
+      var hazardCount = 0;
+      if (routeData.checkpoints) {
+        hazardCount = routeData.checkpoints.filter(cp => cp.hazard).length;
+      }
+      document.querySelector('.stat-item:nth-child(4) .stat-value').textContent = hazardCount;
     }
 
     function openPythonApp() {
       var origin = prompt('Enter origin location (e.g., "Eiffel Tower, Paris"):', '');
-      if (origin === null) return; // User cancelled
+      if (origin === null) return;
       
       var destination = prompt('Enter destination location (e.g., "Louvre Museum, Paris"):', '');
-      if (destination === null) return; // User cancelled
+      if (destination === null) return;
       
       var intervalStr = prompt('Enter interval in minutes (default: 30):', '30');
-      if (intervalStr === null) return; // User cancelled
+      if (intervalStr === null) return;
       
       var interval = parseInt(intervalStr) || 30;
       
-      alert('Route calculation:\n\n📍 From: ' + origin + '\n📍 To: ' + destination + '\n⏱️ Interval: ' + interval + ' minutes\n\nRun the Python script to calculate:\npython3 route_calculator.py\n\nThen enter these locations when prompted.');
+      var instructions = 'Route calculation ready:\n\n📍 From: ' + origin + 
+        '\n📍 To: ' + destination + 
+        '\n⏱️ Interval: ' + interval + ' minutes\n\n' +
+        'Run the Python script to calculate:\n\n' +
+        'python3 route_calculator.py\n\n' +
+        'Then enter these locations when prompted.\n\n' +
+        '✓ The route will be displayed here automatically!';
+      
+      alert(instructions);
     }
 
     function resetView() {

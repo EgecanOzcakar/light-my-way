@@ -645,6 +645,46 @@ def _get_user_input():
     return origin_point, destination_point, interval_minutes
 
 
+def save_route_data_json(origin_point, destination_point, intervals, distance_m, duration_s, poly_coords):
+    """
+    Save route data to JSON file for GitHub Pages frontend.
+    """
+    checkpoints = []
+    for it in intervals:
+        checkpoint = {
+            "time": it["absolute_time"],
+            "time_elapsed": it["time_elapsed_minutes"],
+            "location": it["description"],
+            "lat": it["lat"],
+            "lon": it["lon"],
+            "weather": it["weather"],
+            "hazard": it["hazardous"]
+        }
+        checkpoints.append(checkpoint)
+    
+    route_data = {
+        "start_name": origin_point,
+        "end_name": destination_point,
+        "start_location": [checkpoints[0]["lat"], checkpoints[0]["lon"]] if checkpoints else None,
+        "end_location": [checkpoints[-1]["lat"], checkpoints[-1]["lon"]] if checkpoints else None,
+        "distance_km": round(distance_m / 1000, 2),
+        "duration_minutes": round(duration_s / 60, 2),
+        "route_coordinates": [[coord[0], coord[1]] for coord in poly_coords],
+        "checkpoints": checkpoints
+    }
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(script_dir, "route_data.json")
+    try:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(route_data, f, indent=2, ensure_ascii=False)
+        print(f"INFO: Route data saved to {json_path}")
+        return json_path
+    except Exception as e:
+        print(f"ERROR: Failed to save route data JSON: {e}")
+        return None
+
+
 if __name__ == "__main__":
     print("\n--- Car Route Calculator (OpenStreetMap / OSRM demo) ---")
     print("Note: This uses public demo services; respect their usage policies.\n")
@@ -686,6 +726,9 @@ if __name__ == "__main__":
         print(
             f"  {it['absolute_time']} (+{it['time_elapsed_minutes']} min) -> {it['description']}{weather_str}"
         )
+
+    # Save route data as JSON for web frontend
+    json_file = save_route_data_json(origin_point, destination_point, intervals, distance_m, duration_s, poly_coords)
 
     if poly_coords:
         map_file = generate_map_html(

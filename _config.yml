@@ -1,8 +1,0 @@
-theme: jekyll-theme-minimal
-title: Light My Way
-description: Interactive Car Route Calculator with Real-Time Weather & Hazard Detection
-show_downloads: true
-github:
-  repository_url: https://github.com/EgecanOzcakar/light-my-way
-  is_project_page: true
-  is_user_page: false

@@ -352,3 +352,47 @@ body {
 .drawer-note a {
   color: var(--accent);
 }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panel p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.alerts,
+.departures {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.departures .recent-item {
+  width: 100%;
+}
+
+.recent-item.best {
+  border-color: var(--accent);
+}
+
+.link-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pro-tag {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 10px;
+}

@@ -1,11 +1,11 @@
 import type { LatLng } from '../types'
+import { GEOCODER_URL } from './config'
 
 export interface GeoHit {
   label: string
   coord: LatLng
 }
 
-const NOMINATIM = import.meta.env.VITE_GEOCODER_URL || 'https://nominatim.openstreetmap.org'
 const CACHE_PREFIX = 'lmw:geocode:'
 
 const memCache = new Map<string, GeoHit | null>()
@@ -59,7 +59,7 @@ export async function geocode(query: string, fetchFn: typeof fetch = fetch): Pro
   let hit: GeoHit | null = null
   try {
     const res = await fetchFn(
-      `${NOMINATIM}/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`,
+      `${GEOCODER_URL}/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`,
     )
     if (res.ok) {
       const rows = (await res.json()) as NominatimRow[]
@@ -81,7 +81,7 @@ export async function reverseGeocode(
 ): Promise<string | null> {
   try {
     const res = await fetchFn(
-      `${NOMINATIM}/reverse?format=jsonv2&lat=${coord.lat}&lon=${coord.lng}`,
+      `${GEOCODER_URL}/reverse?format=jsonv2&lat=${coord.lat}&lon=${coord.lng}`,
     )
     if (!res.ok) return null
     const row = (await res.json()) as { display_name?: string }

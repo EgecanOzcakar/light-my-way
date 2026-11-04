@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useReducer, type ReactNode } from
 import type { Checkpoint, RecentRoute, RouteResult, Settings } from './types'
 import type { Warning } from './lib/calculate'
 import { DEFAULT_ROUTING_BASE_URL } from './lib/routing'
+import { HAZARD_THRESHOLDS } from './lib/hazard'
 import type { RouteQuery } from './lib/url'
 
 const SETTINGS_KEY = 'lmw:settings'
@@ -9,7 +10,7 @@ const RECENT_KEY = 'lmw:recent'
 const RECENT_MAX = 10
 
 export const DEFAULT_SETTINGS: Settings = {
-  hazardThresholdC: 25,
+  iceThresholdC: HAZARD_THRESHOLDS.iceC,
   routingBaseUrl: DEFAULT_ROUTING_BASE_URL,
   units: 'metric',
   theme: 'dark',

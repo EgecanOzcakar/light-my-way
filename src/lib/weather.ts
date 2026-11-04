@@ -1,26 +1,33 @@
-import type { Checkpoint } from '../types'
+import type { Checkpoint, CheckpointWeather } from '../types'
+import { WEATHER_URL } from './config'
 
-const OPEN_METEO = import.meta.env.VITE_WEATHER_URL || 'https://api.open-meteo.com/v1/forecast'
-
-export function weatherIcon(precipMm: number): string {
+export function weatherIcon(precipMm: number, snowCm = 0): string {
+  if (snowCm > 0) return '❄️'
   return precipMm > 0 ? '🌧️' : '☀️'
 }
 
-interface HourlyBlock {
+export interface HourlyBlock {
   hourly: {
     time: string[]
     temperature_2m: number[]
     precipitation: number[]
+    snowfall?: number[]
+    wind_gusts_10m?: number[]
+    visibility?: number[]
   }
 }
 
+const HOURLY_FIELDS = 'temperature_2m,precipitation,snowfall,wind_gusts_10m,visibility'
 const DAY_MS = 86_400_000
 const MAX_FORECAST_DAYS = 16 // Open-Meteo forecast API limit
 const MAX_HOUR_GAP_MS = 90 * 60_000
 
-/** forecast_days covering today (UTC) through the last checkpoint's ETA, capped at the API max. */
-export function forecastDays(checkpoints: Checkpoint[], nowMs: number = Date.now()): number {
-  const lastMs = Math.max(...checkpoints.map((c) => new Date(c.etaISO).getTime()))
+/** forecast_days covering today (UTC) through `lastMs` (default: the last checkpoint's ETA), capped at the API max. */
+export function forecastDays(
+  checkpoints: Checkpoint[],
+  nowMs: number = Date.now(),
+  lastMs: number = Math.max(...checkpoints.map((c) => new Date(c.etaISO).getTime())),
+): number {
   const days = Math.floor(lastMs / DAY_MS) - Math.floor(nowMs / DAY_MS) + 1
   return Math.min(MAX_FORECAST_DAYS, Math.max(1, days))
 }
@@ -41,41 +48,64 @@ const nearestHourIndex = (times: string[], targetISO: string): number => {
   return bestDiff <= MAX_HOUR_GAP_MS ? best : -1
 }
 
+/** The weather in `block` at `iso`, or undefined if that hour isn't covered. */
+export function weatherAt(block: HourlyBlock | undefined, iso: string): CheckpointWeather | undefined {
+  const hourly = block?.hourly
+  if (!hourly?.time?.length) return undefined
+  const h = nearestHourIndex(hourly.time, iso)
+  if (h < 0) return undefined
+  const tempC = hourly.temperature_2m[h]
+  const precipMm = hourly.precipitation[h]
+  if (tempC == null || precipMm == null) return undefined
+  const snowCm = hourly.snowfall?.[h] ?? undefined
+  return {
+    tempC,
+    precipMm,
+    snowCm,
+    gustKmh: hourly.wind_gusts_10m?.[h] ?? undefined,
+    visibilityM: hourly.visibility?.[h] ?? undefined,
+    icon: weatherIcon(precipMm, snowCm),
+  }
+}
+
 /**
- * Fill in each checkpoint's weather from Open-Meteo in a single request (one
- * location per checkpoint, comma-joined). On any failure the checkpoints are
- * returned untouched so the schedule still renders.
+ * Hourly forecast blocks, one per checkpoint location (index-aligned), in a
+ * single request. Null on any failure.
+ */
+export async function fetchHourly(
+  checkpoints: Checkpoint[],
+  days: number,
+  fetchFn: typeof fetch = fetch,
+): Promise<HourlyBlock[] | null> {
+  const lat = checkpoints.map((c) => c.coord.lat.toFixed(4)).join(',')
+  const lng = checkpoints.map((c) => c.coord.lng.toFixed(4)).join(',')
+  const url =
+    `${WEATHER_URL}?latitude=${lat}&longitude=${lng}` +
+    `&hourly=${HOURLY_FIELDS}&timezone=UTC&forecast_days=${days}`
+  try {
+    const res = await fetchFn(url)
+    if (!res.ok) return null
+    const data = (await res.json()) as HourlyBlock | HourlyBlock[]
+    return Array.isArray(data) ? data : [data]
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Fill in each checkpoint's weather from Open-Meteo. On any failure the
+ * checkpoints are returned untouched so the schedule still renders.
  */
 export async function attachWeather(
   checkpoints: Checkpoint[],
   fetchFn: typeof fetch = fetch,
 ): Promise<Checkpoint[]> {
   if (checkpoints.length === 0) return checkpoints
-
-  const lat = checkpoints.map((c) => c.coord.lat.toFixed(4)).join(',')
-  const lng = checkpoints.map((c) => c.coord.lng.toFixed(4)).join(',')
-  const url =
-    `${OPEN_METEO}?latitude=${lat}&longitude=${lng}` +
-    `&hourly=temperature_2m,precipitation&timezone=UTC&forecast_days=${forecastDays(checkpoints)}`
-
-  let blocks: HourlyBlock[]
-  try {
-    const res = await fetchFn(url)
-    if (!res.ok) return checkpoints
-    const data = (await res.json()) as HourlyBlock | HourlyBlock[]
-    blocks = Array.isArray(data) ? data : [data]
-  } catch {
-    return checkpoints
-  }
-
+  const blocks = await fetchHourly(checkpoints, forecastDays(checkpoints), fetchFn)
+  if (!blocks) return checkpoints
   return checkpoints.map((cp, i) => {
-    const block = blocks[i] // no fallback to another checkpoint's location: missing stays missing
-    if (!block?.hourly?.time?.length) return cp
-    const h = nearestHourIndex(block.hourly.time, cp.etaISO)
-    if (h < 0) return cp
-    const tempC = block.hourly.temperature_2m[h]
-    const precipMm = block.hourly.precipitation[h]
-    if (tempC == null || precipMm == null) return cp
-    return { ...cp, weather: { tempC, precipMm, icon: weatherIcon(precipMm) } }
+    // no fallback to another checkpoint's location: missing stays missing
+    const weather = weatherAt(blocks[i], cp.etaISO)
+    return weather ? { ...cp, weather } : cp
   })
 }

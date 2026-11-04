@@ -8,8 +8,13 @@ export type CheckpointKind = 'origin' | 'interval' | 'destination'
 export interface CheckpointWeather {
   tempC: number
   precipMm: number
+  snowCm?: number
+  gustKmh?: number
+  visibilityM?: number
   icon: string
 }
+
+export type HazardKind = 'ice' | 'snow' | 'wind' | 'fog' | 'heavy-rain'
 
 export interface Checkpoint {
   id: string
@@ -21,6 +26,7 @@ export interface Checkpoint {
   kind: CheckpointKind
   weather?: CheckpointWeather
   hazard: boolean
+  hazards?: HazardKind[]
 }
 
 export interface RouteResult {
@@ -34,7 +40,8 @@ export type Units = 'metric' | 'imperial'
 export type Theme = 'dark' | 'light'
 
 export interface Settings {
-  hazardThresholdC: number
+  /** Ice threshold (°C): at/below this with precipitation counts as ice. */
+  iceThresholdC: number
   routingBaseUrl: string
   units: Units
   theme: Theme

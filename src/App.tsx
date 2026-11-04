@@ -3,7 +3,8 @@ import { useApp } from './store'
 import { MapView } from './components/MapView'
 import { Sidebar } from './components/Sidebar'
 import { SettingsDrawer } from './components/SettingsDrawer'
-import { calculateTrip, GeocodeError } from './lib/calculate'
+import { calculateTrip, GeocodeError, PlanError } from './lib/calculate'
+import { getPlan } from './lib/entitlements'
 import { decodeRoute, encodeRoute, DEFAULT_INTERVAL } from './lib/url'
 import type { RecentRoute } from './types'
 
@@ -32,7 +33,8 @@ export function App() {
     setTo(q.to)
     setIntervalMin(q.intervalMin)
     dispatch({ type: 'RUN_START' })
-    calculateTrip({ from: q.from, to: q.to, intervalMin: q.intervalMin }, state.settings)
+    getPlan()
+      .then((plan) => calculateTrip({ from: q.from, to: q.to, intervalMin: q.intervalMin, plan }, state.settings))
       .then(({ route, checkpoints, warnings }) => {
         dispatch({ type: 'RUN_OK', query: q, route, checkpoints, warnings })
         const recent: RecentRoute = { ...q, savedISO: new Date().toISOString() }
@@ -44,7 +46,9 @@ export function App() {
           error:
             err instanceof GeocodeError
               ? `Couldn't find the ${err.field === 'from' ? 'origin' : 'destination'} from the shared link.`
-              : 'Could not calculate the shared route.',
+              : err instanceof PlanError
+                ? 'This shared trip ends more than 24 h from now — a Pro feature.'
+                : 'Could not calculate the shared route.',
         })
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps

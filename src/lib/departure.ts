@@ -1,5 +1,5 @@
 import type { Checkpoint, HazardKind, Settings } from '../types'
-import { fetchHourly, forecastDays, weatherAt } from './weather'
+import { fetchHourly, weatherAt } from './weather'
 import { withHazards } from './calculate'
 
 export interface DepartureOption {
@@ -21,7 +21,8 @@ export interface ScoreOptions {
 /**
  * Re-time an already-sampled trip to each departure in the next `hours` and
  * score it with the hazard model. One weather request covers every option, since
- * checkpoint locations don't change — only their ETAs.
+ * checkpoint locations don't change — only their ETAs. Throws PlanError if the
+ * proxy refuses it (free plan).
  */
 export async function scoreDepartures(
   checkpoints: Checkpoint[],
@@ -32,7 +33,7 @@ export async function scoreDepartures(
   const t0 = new Date(checkpoints[0].etaISO).getTime()
   const tripMs = new Date(checkpoints[checkpoints.length - 1].etaISO).getTime() - t0
   const lastMs = nowMs + hours * 3600_000 + tripMs
-  const blocks = await fetchHourly(checkpoints, forecastDays(checkpoints, nowMs, lastMs), fetchFn)
+  const blocks = await fetchHourly(checkpoints, nowMs, lastMs, fetchFn, 'best-time')
   if (!blocks) return null
 
   const options: DepartureOption[] = []

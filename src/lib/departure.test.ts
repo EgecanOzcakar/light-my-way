@@ -1,9 +1,15 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { scoreDepartures, bestDeparture } from './departure'
 import type { Checkpoint, Settings } from '../types'
 
 const settings = { iceThresholdC: 0 } as Settings
 const now = Date.parse('2026-09-08T12:00:00Z')
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(now)
+})
+afterEach(() => vi.useRealTimers())
 
 const cp = (id: string, etaISO: string): Checkpoint => ({
   id,

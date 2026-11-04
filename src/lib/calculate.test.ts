@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { calculateTrip, GeocodeError, PlanError } from './calculate'
+import { calculateTrip, GeocodeError } from './calculate'
+import { PlanError } from './entitlements'
 import type { RouteResult, Settings } from '../types'
 
 const settings: Settings = {

@@ -3,6 +3,7 @@ import { createRouter } from './providers/routing.js'
 import { createWeather } from './providers/weather.js'
 import { createTiles } from './providers/tiles.js'
 import { rateLimiter, ttlCache, UpstreamError } from './util.js'
+import { missingFeature, planFor, weatherEndMs, weatherFeatures } from './plan.js'
 
 const TTL = {
   geocode: 7 * 86_400_000,
@@ -70,8 +71,7 @@ export function createApp({ env = process.env, fetchFn = fetch, now = Date.now }
     try {
       if (path === '/health') return send(res, 200, { ok: true, mock: mockStatus(env) })
       if (path === '/me') {
-        // ponytail: no accounts/billing yet (always mock) — MOCK_PRO=1 grants pro to everyone.
-        return send(res, 200, { plan: env.MOCK_PRO === '1' ? 'pro' : 'free', mock: true }, { mock: true })
+        return send(res, 200, { plan: planFor(req, env), mock: true }, { mock: true })
       }
       if (path === '/geocode/search') {
         const q = url.searchParams.get('q') ?? ''
@@ -86,7 +86,13 @@ export function createApp({ env = process.env, fetchFn = fetch, now = Date.now }
         )
       }
       if (path === '/weather') {
-        url.searchParams.sort()
+        const p = url.searchParams
+        if (!Number.isFinite(weatherEndMs(p, now()))) return send(res, 400, { error: 'bad forecast window' })
+        // Pro limits enforced here too — the browser check is only UX.
+        const feature = missingFeature(planFor(req, env), weatherFeatures(p, now()))
+        if (feature) return send(res, 403, { error: 'pro_required', feature })
+        p.delete('feature') // proxy-only flag; never forwarded or part of the cache key
+        p.sort()
         return await cached(res, `w:${url.searchParams}`, TTL.weather, () => weather(url.searchParams))
       }
       if (tile) {

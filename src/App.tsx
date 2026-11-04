@@ -3,8 +3,8 @@ import { useApp } from './store'
 import { MapView } from './components/MapView'
 import { Sidebar } from './components/Sidebar'
 import { SettingsDrawer } from './components/SettingsDrawer'
-import { calculateTrip, GeocodeError, PlanError } from './lib/calculate'
-import { getPlan } from './lib/entitlements'
+import { calculateTrip, GeocodeError } from './lib/calculate'
+import { getPlan, PlanError, upgradeMessage } from './lib/entitlements'
 import { decodeRoute, encodeRoute, DEFAULT_INTERVAL } from './lib/url'
 import type { RecentRoute } from './types'
 
@@ -47,7 +47,7 @@ export function App() {
             err instanceof GeocodeError
               ? `Couldn't find the ${err.field === 'from' ? 'origin' : 'destination'} from the shared link.`
               : err instanceof PlanError
-                ? 'This shared trip ends more than 24 h from now — a Pro feature.'
+                ? upgradeMessage(err.feature)
                 : 'Could not calculate the shared route.',
         })
       })

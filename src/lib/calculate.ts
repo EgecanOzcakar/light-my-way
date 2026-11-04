@@ -4,7 +4,7 @@ import { getRoute as realGetRoute } from './routing'
 import { attachWeather as realAttachWeather } from './weather'
 import { sampleCheckpoints } from './schedule'
 import { hazardsFor, HAZARD_THRESHOLDS } from './hazard'
-import { can, isMultiDay, type Plan } from './entitlements'
+import { can, isMultiDay, PlanError, type Plan } from './entitlements'
 
 export type Warning = 'routing-approximate' | 'weather-unavailable'
 
@@ -12,14 +12,6 @@ export class GeocodeError extends Error {
   constructor(public field: 'from' | 'to', query: string) {
     super(`Could not find a location for "${query}"`)
     this.name = 'GeocodeError'
-  }
-}
-
-/** The trip needs a Pro feature the current plan doesn't include. */
-export class PlanError extends Error {
-  constructor(public feature: 'multi-day') {
-    super(`"${feature}" requires the Pro plan`)
-    this.name = 'PlanError'
   }
 }
 

@@ -77,11 +77,18 @@ where the proxy tests exercise mock mode on purpose.
 
 ## Billing / entitlements
 
-- `src/lib/entitlements.ts` is the only place that gates features. It reads `plan` from `GET /me`.
+- The limits live in `shared/plan.json` (the 24 h free horizon and the Pro feature list).
+  `src/lib/entitlements.ts` (UI) and `server/plan.js` (enforcement) both read that file.
 - Pro-only features: multi-day trips (the trip ends more than 24 h from now), best time to leave, and hazard alerts.
-- To replace the mock: add auth (session/JWT) to the proxy, look up the customer's subscription
-  (e.g. Stripe customer → active price), and return `{ plan: 'pro' | 'free' }` from `/me`.
-  Then remove `MOCK_PRO`. Enforce the same limits **server-side** too: today the gating is client-side only.
+- The proxy enforces them: a `/weather` request whose window ends past the hour that contains
+  now + 24 h (`end_hour`, `end_date` or `forecast_days`; Open-Meteo's default is 7 days), or that
+  carries `feature=best-time`, returns `403 {"error":"pro_required","feature":…}` on the free plan.
+  The app shows the upgrade message for it. Alerts are computed in the browser, so no endpoint serves them yet.
+- Known gap: `feature=best-time` is a flag the client sends voluntarily. A free client that omits it
+  gets at most a 24 h window, which is the free allowance anyway. Per-account quotas would close this gap.
+- `server/plan.js` → `planFor()` is the one plan lookup, used by `/me` and by every check.
+  To replace the mock: add auth (session/JWT) to the proxy, look up the customer's subscription
+  there (e.g. Stripe customer → active price), and remove `MOCK_PRO`.
 
 ## Scaling notes (marked `ponytail:` in code)
 

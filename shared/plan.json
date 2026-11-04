@@ -1,0 +1,5 @@
+{
+  "_comment": "Freemium limits shared by src/lib/entitlements.ts (frontend) and server/plan.js (proxy). Change them here only.",
+  "freeHorizonHours": 24,
+  "proFeatures": ["multi-day", "best-time", "alerts"]
+}

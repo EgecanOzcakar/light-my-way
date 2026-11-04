@@ -1,6 +1,7 @@
 import { fixture, upstreamJSON } from '../util.js'
 
 const DAY_MS = 86_400_000
+const HOUR_MS = 3_600_000
 
 /**
  * Weather adapter → Open-Meteo forecast response (unchanged wire format).
@@ -24,9 +25,16 @@ function mockForecast(day, params, nowMs) {
   const lats = String(params.get('latitude') ?? '').split(',').map(Number)
   const lngs = String(params.get('longitude') ?? '').split(',').map(Number)
   const fields = String(params.get('hourly') ?? 'temperature_2m').split(',')
-  const days = Math.min(16, Math.max(1, Number(params.get('forecast_days')) || 7))
-  const start = Math.floor(nowMs / DAY_MS) * DAY_MS
-  const time = Array.from({ length: days * 24 }, (_, h) => new Date(start + h * 3600_000).toISOString().slice(0, 16))
+  // Like Open-Meteo: start_hour/end_hour win over forecast_days (default 7).
+  let start = Math.floor(nowMs / DAY_MS) * DAY_MS
+  let end = start + Math.min(16, Math.max(1, Number(params.get('forecast_days')) || 7)) * DAY_MS - HOUR_MS
+  if (params.has('start_hour') && params.has('end_hour')) {
+    start = Date.parse(params.get('start_hour') + 'Z')
+    end = Date.parse(params.get('end_hour') + 'Z')
+  }
+  const hours = []
+  for (let t = start; t <= end && hours.length < 16 * 24; t += HOUR_MS) hours.push(t)
+  const time = hours.map((t) => new Date(t).toISOString().slice(0, 16))
 
   const blocks = lats.map((lat, i) => {
     const hourly = { time }
@@ -35,7 +43,7 @@ function mockForecast(day, params, nowMs) {
       if (!src) continue
       // ±0.6 °C per degree of latitude away from 45°N: same shape, different locations differ a bit
       const shift = f === 'temperature_2m' ? (45 - lat) * 0.6 : 0
-      hourly[f] = time.map((_, h) => Math.round((src[h % 24] + shift) * 10) / 10)
+      hourly[f] = hours.map((t) => Math.round((src[(t / HOUR_MS) % 24] + shift) * 10) / 10)
     }
     return { latitude: lat, longitude: lngs[i], timezone: 'UTC', mock: true, hourly }
   })

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../store'
-import { calculateTrip, GeocodeError, PlanError } from '../lib/calculate'
+import { calculateTrip, GeocodeError } from '../lib/calculate'
 import { clampInterval, MIN_INTERVAL, MAX_INTERVAL } from '../lib/url'
 import { toJSON, toCSV, toICS, downloadText } from '../lib/export'
 import { formatDistance, formatDuration, formatClock, formatTemp, formatOffset } from '../lib/format'
 import { scoreDepartures, bestDeparture, type DepartureOption } from '../lib/departure'
-import { can, usePlan, FREE_HORIZON_MS } from '../lib/entitlements'
+import { can, usePlan, FREE_HORIZON_MS, PlanError, upgradeMessage } from '../lib/entitlements'
 import { HAZARD_LABEL } from '../lib/hazard'
 import { SearchField } from './SearchField'
 import type { Checkpoint, HazardKind, RecentRoute } from '../types'
@@ -41,6 +41,7 @@ export function Sidebar(props: Props) {
   // '' = leave now
   const [departLocal, setDepartLocal] = useState('')
   const [options, setOptions] = useState<DepartureOption[] | null | 'loading'>()
+  const [bestMsg, setBestMsg] = useState<string>()
   // Raw text so the field can be cleared while typing; committed (clamped) on blur/run.
   const [ivText, setIvText] = useState(String(intervalMin))
   useEffect(() => setIvText(String(intervalMin)), [intervalMin])
@@ -60,6 +61,7 @@ export function Sidebar(props: Props) {
     if (!f.trim() || !t.trim()) return
     setPending(true)
     setOptions(undefined)
+    setBestMsg(undefined)
     dispatch({ type: 'RUN_START' })
     try {
       const { route, checkpoints, warnings } = await calculateTrip(
@@ -74,7 +76,7 @@ export function Sidebar(props: Props) {
         err instanceof GeocodeError
           ? `Couldn't find the ${err.field === 'from' ? 'origin' : 'destination'}. Try a more specific name.`
           : err instanceof PlanError
-            ? 'Trips ending more than 24 h from now are a Pro feature.'
+            ? upgradeMessage(err.feature)
             : 'Something went wrong calculating the route.'
       dispatch({ type: 'RUN_ERR', error: msg })
     } finally {
@@ -84,7 +86,13 @@ export function Sidebar(props: Props) {
 
   async function findBestTime() {
     setOptions('loading')
-    setOptions(await scoreDepartures(state.checkpoints, state.settings, { hours: BEST_TIME_HOURS }))
+    setBestMsg(undefined)
+    try {
+      setOptions(await scoreDepartures(state.checkpoints, state.settings, { hours: BEST_TIME_HOURS }))
+    } catch (err) {
+      setOptions(undefined)
+      setBestMsg(err instanceof PlanError ? upgradeMessage(err.feature) : 'Could not score departures.')
+    }
   }
 
   const hazardCount = state.checkpoints.filter((c) => c.hazard).length
@@ -209,6 +217,7 @@ export function Sidebar(props: Props) {
             >
               {options === 'loading' ? 'Scoring…' : `Compare departures over the next ${BEST_TIME_HOURS} h`}
             </button>
+            {bestMsg && <p className="dim">{bestMsg}</p>}
             {options === null && <p className="dim">Weather unavailable — couldn't score departures.</p>}
             {Array.isArray(options) && (
               <ul className="departures">

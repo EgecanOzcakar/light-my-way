@@ -2,11 +2,8 @@ import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import { useApp } from '../store'
 import { formatClock, formatTemp } from '../lib/format'
-import type { Checkpoint, Units } from '../types'
-
-const TILE_URL = import.meta.env.VITE_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-const OSM_ATTR =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+import { TILE_ATTRIBUTION, TILE_SOURCE, TILE_URL } from '../lib/config'
+import type { Checkpoint, Theme, Units } from '../types'
 const START_CENTER: [number, number] = [39.5, 34.9]
 
 const cssVar = (name: string, fallback: string): string =>
@@ -45,6 +42,18 @@ function popupContent(cp: Checkpoint, units: Units, hazard: string): HTMLElement
   return el
 }
 
+/** OSM raster by default; self-hosted Protomaps PMTiles (vector) when VITE_TILE_SOURCE=pmtiles. */
+async function addBaseLayer(map: L.Map, theme: Theme): Promise<void> {
+  if (TILE_SOURCE === 'pmtiles') {
+    // Loaded on demand so the default OSM build doesn't ship the vector renderer.
+    const { leafletLayer } = await import('protomaps-leaflet')
+    const layer = leafletLayer({ url: TILE_URL, flavor: theme, attribution: TILE_ATTRIBUTION })
+    ;(layer as unknown as L.Layer).addTo(map)
+    return
+  }
+  L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+}
+
 export function MapView() {
   const { state, dispatch } = useApp()
   const { route, checkpoints, hoveredId } = state
@@ -58,7 +67,7 @@ export function MapView() {
   // Create the map once.
   useEffect(() => {
     const map = L.map(containerRef.current!).setView(START_CENTER, 6)
-    L.tileLayer(TILE_URL, { attribution: OSM_ATTR, maxZoom: 19 }).addTo(map)
+    void addBaseLayer(map, theme)
     mapRef.current = map
     overlayRef.current = L.layerGroup().addTo(map)
     return () => {
@@ -66,6 +75,7 @@ export function MapView() {
       mapRef.current = null
       overlayRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Redraw route, hazard segments and checkpoint markers.

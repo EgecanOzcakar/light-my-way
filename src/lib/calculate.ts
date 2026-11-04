@@ -3,7 +3,8 @@ import { geocode as realGeocode, type GeoHit } from './geocode'
 import { getRoute as realGetRoute } from './routing'
 import { attachWeather as realAttachWeather } from './weather'
 import { sampleCheckpoints } from './schedule'
-import { isHazardous } from './hazard'
+import { hazardsFor, HAZARD_THRESHOLDS } from './hazard'
+import { can, isMultiDay, PlanError, type Plan } from './entitlements'
 
 export type Warning = 'routing-approximate' | 'weather-unavailable'
 
@@ -14,11 +15,21 @@ export class GeocodeError extends Error {
   }
 }
 
+/** Score a checkpoint's weather with the hazard model (user's ice threshold applied). */
+export function withHazards(c: Checkpoint, settings: Settings): Checkpoint {
+  const hazards = c.weather
+    ? hazardsFor(c.weather, { ...HAZARD_THRESHOLDS, iceC: settings.iceThresholdC })
+    : []
+  return { ...c, hazards, hazard: hazards.length > 0 }
+}
+
 export interface CalculateInput {
   from: string
   to: string
   intervalMin: number
   startISO?: string
+  /** Enforce plan limits; omitted → no gating (tests, internal callers). */
+  plan?: Plan
 }
 
 export interface TripResult {
@@ -59,13 +70,10 @@ export async function calculateTrip(
     destinationLabel: destination.label,
   })
 
+  if (input.plan && !can(input.plan, 'multi-day') && isMultiDay(sampled)) throw new PlanError('multi-day')
+
   const weathered = await attachWeather(sampled)
-  const checkpoints = weathered.map((c) => ({
-    ...c,
-    hazard: c.weather
-      ? isHazardous(c.weather.tempC, c.weather.precipMm, settings.hazardThresholdC)
-      : false,
-  }))
+  const checkpoints = weathered.map((c) => withHazards(c, settings))
 
   const warnings: Warning[] = []
   if (route.approximate) warnings.push('routing-approximate')

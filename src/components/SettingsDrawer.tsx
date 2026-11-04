@@ -1,5 +1,7 @@
 import { useApp } from '../store'
 import { DEFAULT_ROUTING_BASE_URL } from '../lib/routing'
+import { tempFromDisplay, tempToDisplay } from '../lib/format'
+import { HAZARD_THRESHOLDS } from '../lib/hazard'
 import type { Settings } from '../types'
 
 export function SettingsDrawer({ onClose }: { onClose: () => void }) {
@@ -18,14 +20,19 @@ export function SettingsDrawer({ onClose }: { onClose: () => void }) {
         </header>
 
         <label className="field-label">
-          Hazard temperature threshold ({s.units === 'imperial' ? '°F' : '°C'})
+          Ice threshold — at/below this with precipitation ({s.units === 'imperial' ? '°F' : '°C'})
         </label>
         <input
           className="field-input"
           type="number"
-          value={s.hazardThresholdC}
-          onChange={(e) => set({ hazardThresholdC: Number(e.target.value) })}
+          value={tempToDisplay(s.iceThresholdC, s.units)}
+          onChange={(e) => set({ iceThresholdC: tempFromDisplay(Number(e.target.value), s.units) })}
         />
+
+        <p className="drawer-note">
+          Also flagged: snowfall, wind gusts ≥ {HAZARD_THRESHOLDS.gustKmh} km/h, visibility under{' '}
+          {HAZARD_THRESHOLDS.visibilityM} m, and rain ≥ {HAZARD_THRESHOLDS.heavyRainMm} mm/h.
+        </p>
 
         <label className="field-label">Routing server (OSRM API base URL)</label>
         <input

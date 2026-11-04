@@ -1,11 +1,13 @@
 import type { LatLng, RouteResult } from '../types'
 import { haversineM } from './geo'
+import { ROUTER_URL } from './config'
 
 /**
  * FOSSGIS community OSRM instance — same API as the project demo server
- * (router.project-osrm.org) but with far better uptime. Overridable in Settings.
+ * (router.project-osrm.org) but with far better uptime — or the proxy when
+ * VITE_API_BASE is set. Overridable in Settings.
  */
-export const DEFAULT_ROUTING_BASE_URL = 'https://routing.openstreetmap.de/routed-car'
+export const DEFAULT_ROUTING_BASE_URL = ROUTER_URL
 
 const FALLBACK_AVG_KMH = 70
 const FALLBACK_POINTS = 64

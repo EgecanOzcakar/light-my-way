@@ -8,7 +8,8 @@ export const MIN_INTERVAL = 5
 export const MAX_INTERVAL = 240
 export const DEFAULT_INTERVAL = 30
 
-const clampInterval = (n: number): number =>
+/** Clamp a checkpoint interval to [MIN_INTERVAL, MAX_INTERVAL]; non-finite → default. */
+export const clampInterval = (n: number): number =>
   Number.isFinite(n) ? Math.min(MAX_INTERVAL, Math.max(MIN_INTERVAL, Math.round(n))) : DEFAULT_INTERVAL
 
 /** Serialise a route to a query string (no leading `?`). */

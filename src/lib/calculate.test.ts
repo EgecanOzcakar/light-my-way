@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { calculateTrip, GeocodeError } from './calculate'
+import { PlanError } from './entitlements'
 import type { RouteResult, Settings } from '../types'
 
 const settings: Settings = {
-  hazardThresholdC: 25,
+  iceThresholdC: 0,
   routingBaseUrl: 'https://routing.test',
   units: 'metric',
   theme: 'dark',
@@ -28,7 +29,7 @@ const deps = () => ({
   })),
   getRoute: vi.fn(async () => straightRoute(false)),
   attachWeather: vi.fn(async (cps: any[]) =>
-    cps.map((c) => ({ ...c, weather: { tempC: 3, precipMm: 1, icon: '🌧️' } })),
+    cps.map((c) => ({ ...c, weather: { tempC: -1, precipMm: 1, icon: '🌧️' } })),
   ),
 })
 
@@ -71,5 +72,14 @@ describe('calculateTrip', () => {
     await expect(
       calculateTrip({ from: 'A', to: 'B', intervalMin: 30 }, settings, d),
     ).rejects.toBeInstanceOf(GeocodeError)
+  })
+
+  it('free plan rejects trips ending more than 24 h from now; pro allows them', async () => {
+    const startISO = new Date(Date.now() + 30 * 3600_000).toISOString()
+    await expect(
+      calculateTrip({ from: 'A', to: 'B', intervalMin: 30, startISO, plan: 'free' }, settings, deps()),
+    ).rejects.toBeInstanceOf(PlanError)
+    const r = await calculateTrip({ from: 'A', to: 'B', intervalMin: 30, startISO, plan: 'pro' }, settings, deps())
+    expect(r.checkpoints.length).toBeGreaterThan(0)
   })
 })

@@ -5,8 +5,19 @@ export function formatDistance(meters: number, units: Units): string {
   return `${(meters / 1000).toFixed(1)} km`
 }
 
+const cToF = (c: number): number => (c * 9) / 5 + 32
+const fToC = (f: number): number => ((f - 32) * 5) / 9
+
+/** A °C value shown in the user's units, rounded to 0.1. */
+export const tempToDisplay = (celsius: number, units: Units): number =>
+  Math.round((units === 'imperial' ? cToF(celsius) : celsius) * 10) / 10
+
+/** A value typed in the user's units, back to °C (what we store and compare). */
+export const tempFromDisplay = (value: number, units: Units): number =>
+  units === 'imperial' ? fToC(value) : value
+
 export function formatTemp(celsius: number, units: Units): string {
-  if (units === 'imperial') return `${Math.round((celsius * 9) / 5 + 32)}°F`
+  if (units === 'imperial') return `${Math.round(cToF(celsius))}°F`
   return `${Math.round(celsius)}°C`
 }
 

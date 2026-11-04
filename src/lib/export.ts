@@ -35,7 +35,33 @@ export function toCSV(checkpoints: Checkpoint[]): string {
 
 const icsDate = (iso: string): string => iso.replace(/[-:]/g, '').replace(/\.\d{3}/, '')
 
-export function toICS(checkpoints: Checkpoint[]): string {
+/** RFC 5545 §3.3.11 TEXT escaping. */
+export const icsEscape = (s: string): string =>
+  s.replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n')
+
+const utf8 = new TextEncoder()
+
+/** RFC 5545 §3.1 line folding: max 75 octets per line, never splitting a UTF-8 sequence. */
+export function icsFold(line: string): string {
+  const out: string[] = []
+  let cur = ''
+  let octets = 0
+  for (const ch of line) {
+    const n = utf8.encode(ch).length
+    if (octets + n > 75) {
+      out.push(cur)
+      cur = ' '
+      octets = 1
+    }
+    cur += ch
+    octets += n
+  }
+  out.push(cur)
+  return out.join('\r\n')
+}
+
+export function toICS(checkpoints: Checkpoint[], now: Date = new Date()): string {
+  const stamp = icsDate(now.toISOString())
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -47,14 +73,15 @@ export function toICS(checkpoints: Checkpoint[]): string {
     lines.push(
       'BEGIN:VEVENT',
       `UID:${c.id}-${start}@light-my-way`,
+      `DTSTAMP:${stamp}`,
       `DTSTART:${start}`,
       `DURATION:PT1M`,
-      `SUMMARY:${c.hazard ? '⚠ ' : ''}${c.label}${weather}`,
+      `SUMMARY:${icsEscape(`${c.hazard ? '⚠ ' : ''}${c.label}${weather}`)}`,
       'END:VEVENT',
     )
   }
   lines.push('END:VCALENDAR')
-  return lines.join('\r\n')
+  return lines.map(icsFold).join('\r\n') + '\r\n'
 }
 
 export function downloadText(filename: string, mime: string, body: string): void {
@@ -63,5 +90,6 @@ export function downloadText(filename: string, mime: string, body: string): void
   a.href = url
   a.download = filename
   a.click()
-  URL.revokeObjectURL(url)
+  // Revoking synchronously can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

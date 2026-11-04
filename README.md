@@ -16,7 +16,10 @@ account and no API keys.
 - Fetches a driving route (OSRM)
 - Samples the route at a fixed time interval (every 30 min by default)
 - Attaches an hourly weather forecast to each checkpoint (Open-Meteo)
-- Flags **hazardous** checkpoints — at or below 25 °C **and** with precipitation
+- Flags **hazards** per checkpoint: ice (≤ 0 °C with precipitation), snowfall,
+  strong gusts, low visibility and heavy rain (thresholds in `src/lib/hazard.ts`)
+- Departure-time picker; **best time to leave** compares departures over the next 12 h (Pro)
+- Hazard alerts summary (Pro); trips ending more than 24 h out are Pro
 - Draws the route, checkpoints and hazardous segments on a Leaflet map
 - Shareable route links, recent-route history, and JSON / CSV / ICS export
 
@@ -35,37 +38,49 @@ Other scripts: `npm test` (Vitest), `npm run build` (outputs `dist/`),
 
 The app is a static bundle — `npm run build` and host `dist/` anywhere.
 
-## Command-line version
-
-A terminal equivalent lives in `cli/`. It prints the same route summary and
-weather/hazard schedule to stdout.
-
-```bash
-pip install -r requirements.txt
-python -m cli
-```
-
-```bash
-pip install -r requirements-dev.txt
-python -m pytest        # runs the CLI tests
-```
-
 ## Configuration
 
 Open **Settings** in the app to change:
 
-- **Hazard temperature threshold** (default 25 °C)
+- **Ice threshold** (default 0 °C)
 - **Routing server** — any OSRM-compatible base URL; defaults to the FOSSGIS
   community instance (`routing.openstreetmap.de/routed-car`). Point it at your
   own OSRM if you self-host.
 - **Units** (metric / imperial) and **theme** (dark / light)
+
+Build-time service URLs (Vite env vars, e.g. in `.env.local`) — all optional,
+defaulting to the public services below:
+
+| Variable | Default |
+| --- | --- |
+| `VITE_GEOCODER_URL` | `https://nominatim.openstreetmap.org` |
+| `VITE_ROUTER_URL` | `https://routing.openstreetmap.de/routed-car` |
+| `VITE_WEATHER_URL` | `https://api.open-meteo.com/v1/forecast` |
+| `VITE_TILE_URL` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` |
+| `VITE_API_BASE` | unset — set to the proxy URL to route everything through `server/` |
+| `VITE_TILE_SOURCE` / `VITE_PMTILES_URL` | `osm` — `pmtiles` for self-hosted Protomaps |
+
+## Backend proxy (`server/`)
+
+A dependency-free Node proxy (built-in `http` + `fetch`) that forwards geocode,
+route, weather and tile requests, keeps provider keys server-side, caches
+responses with a TTL and rate-limits per IP. Providers: Open-Meteo commercial,
+Geoapify, Valhalla (truck costing). **With no keys set it serves mock data**
+from `server/fixtures/`.
+
+```bash
+npm run server                                  # :8787, mock mode
+VITE_API_BASE=http://localhost:8787 npm run dev
+```
+
+See **[SETUP.md](SETUP.md)** for every env var, fixture and what replaces it.
 
 ## Project layout
 
 ```
 src/lib/      pure logic — geocode, routing, weather, schedule, hazard, url, export
 src/components/  MapView, Sidebar, SettingsDrawer
-cli/          the Python CLI, mirroring src/lib module-for-module
+server/       backend proxy, provider adapters, mock fixtures
 docs/         design spec and implementation plan
 ```
 
@@ -77,8 +92,9 @@ docs/         design spec and implementation plan
 - Weather — [Open-Meteo](https://open-meteo.com/)
 - Map tiles — [OpenStreetMap](https://www.openstreetmap.org/copyright)
 
-Please respect each service's usage policy. This is a hobby project — not for
-high-volume or commercial use against the public demo servers.
+Please respect each service's usage policy. The public demo servers are not for
+high-volume or commercial use — production traffic goes through the proxy with
+paid providers (see [SETUP.md](SETUP.md)).
 
 ## License
 

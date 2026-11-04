@@ -1,22 +1,13 @@
-import { useEffect, useMemo } from 'react'
-import { MapContainer, TileLayer, Polyline, CircleMarker, Popup, useMap } from 'react-leaflet'
+import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import { useApp } from '../store'
 import { formatClock, formatTemp } from '../lib/format'
-import type { Checkpoint } from '../types'
-
-const OSM_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-const OSM_ATTR =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+import { TILE_ATTRIBUTION, TILE_SOURCE, TILE_URL } from '../lib/config'
+import type { Checkpoint, Theme, Units } from '../types'
 const START_CENTER: [number, number] = [39.5, 34.9]
 
-function FitBounds({ points }: { points: [number, number][] }) {
-  const map = useMap()
-  useEffect(() => {
-    if (points.length > 1) map.fitBounds(L.latLngBounds(points), { padding: [40, 40] })
-  }, [map, points])
-  return null
-}
+const cssVar = (name: string, fallback: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 
 function hazardPairs(checkpoints: Checkpoint[]): [number, number][][] {
   const segs: [number, number][][] = []
@@ -31,78 +22,110 @@ function hazardPairs(checkpoints: Checkpoint[]): [number, number][][] {
   return segs
 }
 
+/** Popup body built from DOM text nodes — labels come from the geocoder, so no HTML strings. */
+function popupContent(cp: Checkpoint, units: Units, hazard: string): HTMLElement {
+  const el = document.createElement('div')
+  const title = document.createElement('strong')
+  title.textContent = cp.label
+  el.append(title)
+  const line = (text: string) => {
+    el.append(document.createElement('br'), document.createTextNode(text))
+  }
+  line(`${formatClock(cp.etaISO)} (${cp.offsetMin === 0 ? 'start' : `+${cp.offsetMin} min`})`)
+  if (cp.weather) line(`${cp.weather.icon} ${formatTemp(cp.weather.tempC, units)}, ${cp.weather.precipMm} mm`)
+  if (cp.hazard) {
+    const warn = document.createElement('span')
+    warn.style.color = hazard
+    warn.textContent = '⚠ hazardous conditions'
+    el.append(document.createElement('br'), warn)
+  }
+  return el
+}
+
+/** OSM raster by default; self-hosted Protomaps PMTiles (vector) when VITE_TILE_SOURCE=pmtiles. */
+async function addBaseLayer(map: L.Map, theme: Theme): Promise<void> {
+  if (TILE_SOURCE === 'pmtiles') {
+    // Loaded on demand so the default OSM build doesn't ship the vector renderer.
+    const { leafletLayer } = await import('protomaps-leaflet')
+    const layer = leafletLayer({ url: TILE_URL, flavor: theme, attribution: TILE_ATTRIBUTION })
+    ;(layer as unknown as L.Layer).addTo(map)
+    return
+  }
+  L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+}
+
 export function MapView() {
   const { state, dispatch } = useApp()
   const { route, checkpoints, hoveredId } = state
+  const { units, theme } = state.settings
 
-  const line = useMemo<[number, number][]>(
-    () => route?.polyline.map((p) => [p.lat, p.lng]) ?? [],
-    [route],
-  )
-  const hazardSegs = useMemo(() => hazardPairs(checkpoints), [checkpoints])
-  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7fd0ff'
-  const hazard = getComputedStyle(document.documentElement).getPropertyValue('--hazard').trim() || '#ff8c42'
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const overlayRef = useRef<L.LayerGroup | null>(null)
+  const markersRef = useRef(new Map<string, { marker: L.CircleMarker; cp: Checkpoint }>())
 
-  return (
-    <MapContainer center={START_CENTER} zoom={6} style={{ height: '100%', width: '100%' }}>
-      <TileLayer url={OSM_URL} attribution={OSM_ATTR} maxZoom={19} />
+  // Create the map once.
+  useEffect(() => {
+    const map = L.map(containerRef.current!).setView(START_CENTER, 6)
+    void addBaseLayer(map, theme)
+    mapRef.current = map
+    overlayRef.current = L.layerGroup().addTo(map)
+    return () => {
+      map.remove()
+      mapRef.current = null
+      overlayRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-      {line.length > 1 && (
-        <Polyline
-          positions={line}
-          pathOptions={{
-            color: route?.approximate ? hazard : accent,
-            weight: 4,
-            dashArray: route?.approximate ? '8 8' : undefined,
-          }}
-        />
-      )}
+  // Redraw route, hazard segments and checkpoint markers.
+  useEffect(() => {
+    const overlay = overlayRef.current
+    if (!overlay) return
+    overlay.clearLayers()
+    markersRef.current.clear()
 
-      {hazardSegs.map((seg, i) => (
-        <Polyline key={i} positions={seg} pathOptions={{ color: hazard, weight: 7, opacity: 0.9 }} />
-      ))}
+    const accent = cssVar('--accent', '#7fd0ff')
+    const hazard = cssVar('--hazard', '#ff8c42')
+    const line = route?.polyline.map((p): [number, number] => [p.lat, p.lng]) ?? []
 
-      {checkpoints.map((cp) => {
-        const active = cp.id === hoveredId
-        return (
-          <CircleMarker
-            key={cp.id}
-            center={[cp.coord.lat, cp.coord.lng]}
-            radius={active ? 11 : cp.kind === 'interval' ? 6 : 8}
-            pathOptions={{
-              color: cp.hazard ? hazard : accent,
-              fillColor: cp.hazard ? hazard : accent,
-              fillOpacity: active ? 0.95 : 0.65,
-              weight: active ? 3 : 1,
-            }}
-            eventHandlers={{
-              mouseover: () => dispatch({ type: 'HOVER', id: cp.id }),
-              mouseout: () => dispatch({ type: 'HOVER', id: undefined }),
-            }}
-          >
-            <Popup>
-              <strong>{cp.label}</strong>
-              <br />
-              {formatClock(cp.etaISO)} ({cp.offsetMin === 0 ? 'start' : `+${cp.offsetMin} min`})
-              {cp.weather && (
-                <>
-                  <br />
-                  {cp.weather.icon} {formatTemp(cp.weather.tempC, state.settings.units)},{' '}
-                  {cp.weather.precipMm} mm
-                </>
-              )}
-              {cp.hazard && (
-                <>
-                  <br />
-                  <span style={{ color: hazard }}>⚠ hazardous conditions</span>
-                </>
-              )}
-            </Popup>
-          </CircleMarker>
-        )
-      })}
+    if (line.length > 1) {
+      L.polyline(line, {
+        color: route?.approximate ? hazard : accent,
+        weight: 4,
+        dashArray: route?.approximate ? '8 8' : undefined,
+      }).addTo(overlay)
+    }
+    for (const seg of hazardPairs(checkpoints)) {
+      L.polyline(seg, { color: hazard, weight: 7, opacity: 0.9 }).addTo(overlay)
+    }
+    for (const cp of checkpoints) {
+      const color = cp.hazard ? hazard : accent
+      const marker = L.circleMarker([cp.coord.lat, cp.coord.lng], { color, fillColor: color })
+        .bindPopup(popupContent(cp, units, hazard))
+        .on('mouseover', () => dispatch({ type: 'HOVER', id: cp.id }))
+        .on('mouseout', () => dispatch({ type: 'HOVER', id: undefined }))
+        .addTo(overlay)
+      markersRef.current.set(cp.id, { marker, cp })
+    }
+  }, [route, checkpoints, units, theme, dispatch])
 
-      <FitBounds points={line} />
-    </MapContainer>
-  )
+  // Hover styling only — restyle in place so open popups survive.
+  useEffect(() => {
+    for (const [id, { marker, cp }] of markersRef.current) {
+      const active = id === hoveredId
+      marker.setRadius(active ? 11 : cp.kind === 'interval' ? 6 : 8)
+      marker.setStyle({ fillOpacity: active ? 0.95 : 0.65, weight: active ? 3 : 1 })
+    }
+  }, [hoveredId, route, checkpoints, units, theme])
+
+  // Fit the view to a new route.
+  useEffect(() => {
+    const map = mapRef.current
+    if (map && route && route.polyline.length > 1) {
+      map.fitBounds(L.latLngBounds(route.polyline.map((p) => [p.lat, p.lng])), { padding: [40, 40] })
+    }
+  }, [route])
+
+  return <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
 }

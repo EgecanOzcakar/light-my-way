@@ -1,5 +1,6 @@
 import { useApp } from '../store'
 import { DEFAULT_ROUTING_BASE_URL } from '../lib/routing'
+import { tempFromDisplay, tempToDisplay } from '../lib/format'
 import type { Settings } from '../types'
 
 export function SettingsDrawer({ onClose }: { onClose: () => void }) {
@@ -23,8 +24,8 @@ export function SettingsDrawer({ onClose }: { onClose: () => void }) {
         <input
           className="field-input"
           type="number"
-          value={s.hazardThresholdC}
-          onChange={(e) => set({ hazardThresholdC: Number(e.target.value) })}
+          value={tempToDisplay(s.hazardThresholdC, s.units)}
+          onChange={(e) => set({ hazardThresholdC: tempFromDisplay(Number(e.target.value), s.units) })}
         />
 
         <label className="field-label">Routing server (OSRM API base URL)</label>

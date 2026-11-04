@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { attachWeather, weatherIcon } from './weather'
+import { attachWeather, forecastDays, weatherIcon } from './weather'
 import type { Checkpoint } from '../types'
 
 const cp = (id: string, etaISO: string): Checkpoint => ({
@@ -47,5 +47,33 @@ describe('attachWeather', () => {
     const f = vi.fn().mockRejectedValue(new Error('down')) as unknown as typeof fetch
     const out = await attachWeather([cp('cp1', '2026-09-08T12:00:00Z')], f)
     expect(out[0].weather).toBeUndefined()
+  })
+
+  it('marks checkpoints without their own block as missing (no blocks[0] fallback)', async () => {
+    const f = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [hourlyBlock('2026-09-08')],
+    }) as unknown as typeof fetch
+    const out = await attachWeather(
+      [cp('cp1', '2026-09-08T12:00:00Z'), cp('cp2', '2026-09-08T12:00:00Z')],
+      f,
+    )
+    expect(out[0].weather).toBeDefined()
+    expect(out[1].weather).toBeUndefined()
+  })
+
+  it('marks an ETA outside the returned hours as missing', async () => {
+    const f = vi.fn().mockResolvedValue({ ok: true, json: async () => hourlyBlock('2026-09-08') }) as unknown as typeof fetch
+    const out = await attachWeather([cp('cp1', '2026-09-09T12:00:00Z')], f)
+    expect(out[0].weather).toBeUndefined()
+  })
+})
+
+describe('forecastDays', () => {
+  const now = Date.parse('2026-09-08T22:00:00Z')
+  it('covers through the last ETA, min 1, max 16', () => {
+    expect(forecastDays([cp('cp1', '2026-09-08T23:00:00Z')], now)).toBe(1)
+    expect(forecastDays([cp('cp1', '2026-09-08T23:00:00Z'), cp('cp2', '2026-09-10T01:00:00Z')], now)).toBe(3)
+    expect(forecastDays([cp('cp1', '2026-12-01T00:00:00Z')], now)).toBe(16)
   })
 })

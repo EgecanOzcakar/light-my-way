@@ -54,3 +54,15 @@ describe('sampleCheckpoints', () => {
     expect(sampleCheckpoints(route, { ...opts, intervalMin: 120 })).toHaveLength(2)
   })
 })
+
+describe('sampleCheckpoints interval clamp', () => {
+  it.each([0, -10, NaN, Infinity])('terminates and clamps intervalMin=%s', (iv) => {
+    const cps = sampleCheckpoints(route, { ...opts, intervalMin: iv })
+    // 0/-10 → 5 min (11 interval points on a 60-min trip); NaN/Infinity → default 30
+    expect(cps.length).toBe(iv === 0 || iv === -10 ? 13 : 3)
+  })
+
+  it('clamps very large intervals to the max', () => {
+    expect(sampleCheckpoints(route, { ...opts, intervalMin: 1e9 })).toHaveLength(2)
+  })
+})

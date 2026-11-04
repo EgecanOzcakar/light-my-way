@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useReducer, type ReactNode } from
 import type { Checkpoint, RecentRoute, RouteResult, Settings } from './types'
 import type { Warning } from './lib/calculate'
 import { DEFAULT_ROUTING_BASE_URL } from './lib/routing'
+import type { RouteQuery } from './lib/url'
 
 const SETTINGS_KEY = 'lmw:settings'
 const RECENT_KEY = 'lmw:recent'
@@ -17,6 +18,8 @@ export const DEFAULT_SETTINGS: Settings = {
 export interface AppState {
   status: 'idle' | 'loading' | 'done' | 'error'
   route?: RouteResult
+  /** The query the current `route` was calculated from (source of the share URL). */
+  query?: RouteQuery
   checkpoints: Checkpoint[]
   warnings: Warning[]
   error?: string
@@ -27,20 +30,11 @@ export interface AppState {
 
 type Action =
   | { type: 'RUN_START' }
-  | { type: 'RUN_OK'; route: RouteResult; checkpoints: Checkpoint[]; warnings: Warning[] }
+  | { type: 'RUN_OK'; query: RouteQuery; route: RouteResult; checkpoints: Checkpoint[]; warnings: Warning[] }
   | { type: 'RUN_ERR'; error: string }
   | { type: 'HOVER'; id?: string }
   | { type: 'SET_SETTINGS'; settings: Partial<Settings> }
   | { type: 'ADD_RECENT'; route: RecentRoute }
-  | { type: 'LOAD_PERSISTED'; settings: Settings; recent: RecentRoute[] }
-
-const initialState: AppState = {
-  status: 'idle',
-  checkpoints: [],
-  warnings: [],
-  recent: [],
-  settings: DEFAULT_SETTINGS,
-}
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -50,6 +44,7 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         status: 'done',
+        query: action.query,
         route: action.route,
         checkpoints: action.checkpoints,
         warnings: action.warnings,
@@ -66,8 +61,6 @@ function reducer(state: AppState, action: Action): AppState {
       )
       return { ...state, recent: [action.route, ...deduped].slice(0, RECENT_MAX) }
     }
-    case 'LOAD_PERSISTED':
-      return { ...state, settings: action.settings, recent: action.recent }
     default:
       return state
   }
@@ -97,19 +90,29 @@ interface Ctx {
 
 const AppContext = createContext<Ctx | null>(null)
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState)
+/**
+ * Read persisted settings/recent synchronously as the initial state, so nothing
+ * (a shared-link auto-run, or the write-back effects below under StrictMode)
+ * ever sees or persists the defaults first.
+ */
+function loadInitialState(): AppState {
+  let recent: RecentRoute[] = []
+  try {
+    recent = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as RecentRoute[]
+  } catch {
+    recent = []
+  }
+  return {
+    status: 'idle',
+    checkpoints: [],
+    warnings: [],
+    recent,
+    settings: readJSON<Settings>(SETTINGS_KEY, DEFAULT_SETTINGS),
+  }
+}
 
-  useEffect(() => {
-    const settings = readJSON<Settings>(SETTINGS_KEY, DEFAULT_SETTINGS)
-    let recent: RecentRoute[] = []
-    try {
-      recent = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as RecentRoute[]
-    } catch {
-      recent = []
-    }
-    dispatch({ type: 'LOAD_PERSISTED', settings, recent })
-  }, [])
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, undefined, loadInitialState)
 
   useEffect(() => {
     writeJSON(SETTINGS_KEY, state.settings)

@@ -5,7 +5,7 @@ export interface GeoHit {
   coord: LatLng
 }
 
-const NOMINATIM = 'https://nominatim.openstreetmap.org'
+const NOMINATIM = import.meta.env.VITE_GEOCODER_URL || 'https://nominatim.openstreetmap.org'
 const CACHE_PREFIX = 'lmw:geocode:'
 
 const memCache = new Map<string, GeoHit | null>()
@@ -72,20 +72,6 @@ export async function geocode(query: string, fetchFn: typeof fetch = fetch): Pro
   memCache.set(key, hit)
   if (hit) persist(key, hit)
   return hit
-}
-
-/** Up to 5 matches for autocomplete. Not cached (queries change every keystroke). */
-export async function suggest(query: string, fetchFn: typeof fetch = fetch): Promise<GeoHit[]> {
-  if (!query.trim()) return []
-  try {
-    const res = await fetchFn(
-      `${NOMINATIM}/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`,
-    )
-    if (!res.ok) return []
-    return ((await res.json()) as NominatimRow[]).map(toHit)
-  } catch {
-    return []
-  }
 }
 
 /** Best-effort place name for a coordinate. */

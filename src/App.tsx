@@ -21,7 +21,8 @@ export function App() {
   const [navOpen, setNavOpen] = useState(false)
   const autoRan = useRef(false)
 
-  // Auto-run a shared URL once, after persisted settings have loaded.
+  // Auto-run a shared URL once. Settings are read synchronously into the
+  // initial store state, so this already uses the persisted ones.
   useEffect(() => {
     if (autoRan.current) return
     const q = decodeRoute(window.location.search)
@@ -33,7 +34,7 @@ export function App() {
     dispatch({ type: 'RUN_START' })
     calculateTrip({ from: q.from, to: q.to, intervalMin: q.intervalMin }, state.settings)
       .then(({ route, checkpoints, warnings }) => {
-        dispatch({ type: 'RUN_OK', route, checkpoints, warnings })
+        dispatch({ type: 'RUN_OK', query: q, route, checkpoints, warnings })
         const recent: RecentRoute = { ...q, savedISO: new Date().toISOString() }
         dispatch({ type: 'ADD_RECENT', route: recent })
       })
@@ -47,13 +48,12 @@ export function App() {
         })
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.settings])
+  }, [])
 
+  // The share URL reflects the last route actually calculated, not the live inputs.
   useEffect(() => {
-    if (state.status === 'done' && from && to) {
-      window.history.replaceState(null, '', '?' + encodeRoute({ from, to, intervalMin }))
-    }
-  }, [state.status, from, to, intervalMin])
+    if (state.query) window.history.replaceState(null, '', '?' + encodeRoute(state.query))
+  }, [state.query])
 
   return (
     <div className="app">

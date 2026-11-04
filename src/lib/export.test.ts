@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toJSON, toCSV, toICS } from './export'
+import { toJSON, toCSV, toICS, icsEscape, icsFold } from './export'
 import type { Checkpoint, RouteResult } from '../types'
 
 const route: RouteResult = { polyline: [], distanceM: 2150, durationS: 480, approximate: false }
@@ -50,5 +50,34 @@ describe('export', () => {
     expect(ics.match(/END:VEVENT/g)).toHaveLength(2)
     expect(ics).toContain('DTSTART:20260908T120000Z')
     expect(ics).toContain('SUMMARY:⚠ Midtown')
+  })
+})
+
+describe('ICS RFC 5545 formatting', () => {
+  const utf8 = new TextEncoder()
+
+  it('escapes backslash, semicolon, comma and newlines in TEXT', () => {
+    expect(icsEscape('a\\b;c,d\ne\r\nf')).toBe('a\\\\b\;c\\,d\\ne\\nf')
+    const ics = toICS(checkpoints)
+    expect(ics).toContain('SUMMARY:Times Square\\, NY')
+  })
+
+  it('folds lines at 75 octets without splitting UTF-8 sequences', () => {
+    const long = 'SUMMARY:' + 'é'.repeat(60) + '⚠'.repeat(20)
+    const folded = icsFold(long)
+    const parts = folded.split('\r\n')
+    expect(parts.length).toBeGreaterThan(1)
+    for (const p of parts) expect(utf8.encode(p).length).toBeLessThanOrEqual(75)
+    expect(parts.slice(1).every((p) => p.startsWith(' '))).toBe(true)
+    // unfolding restores the original exactly
+    expect(folded.replace(/\r\n /g, '')).toBe(long)
+    expect(icsFold('SHORT')).toBe('SHORT')
+  })
+
+  it('uses CRLF everywhere and includes DTSTAMP on every event', () => {
+    const ics = toICS(checkpoints, new Date('2026-09-01T08:00:00.000Z'))
+    expect(ics.endsWith('END:VCALENDAR\r\n')).toBe(true)
+    expect(ics.replace(/\r\n/g, '')).not.toMatch(/[\r\n]/)
+    expect(ics.match(/DTSTAMP:20260901T080000Z/g)).toHaveLength(2)
   })
 })

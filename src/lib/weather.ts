@@ -1,6 +1,6 @@
 import type { Checkpoint } from '../types'
 
-const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast'
+const OPEN_METEO = import.meta.env.VITE_WEATHER_URL || 'https://api.open-meteo.com/v1/forecast'
 
 export function weatherIcon(precipMm: number): string {
   return precipMm > 0 ? '🌧️' : '☀️'
@@ -14,6 +14,18 @@ interface HourlyBlock {
   }
 }
 
+const DAY_MS = 86_400_000
+const MAX_FORECAST_DAYS = 16 // Open-Meteo forecast API limit
+const MAX_HOUR_GAP_MS = 90 * 60_000
+
+/** forecast_days covering today (UTC) through the last checkpoint's ETA, capped at the API max. */
+export function forecastDays(checkpoints: Checkpoint[], nowMs: number = Date.now()): number {
+  const lastMs = Math.max(...checkpoints.map((c) => new Date(c.etaISO).getTime()))
+  const days = Math.floor(lastMs / DAY_MS) - Math.floor(nowMs / DAY_MS) + 1
+  return Math.min(MAX_FORECAST_DAYS, Math.max(1, days))
+}
+
+/** Index of the hour nearest to `targetISO`, or -1 if none is within 90 min (outside the forecast). */
 const nearestHourIndex = (times: string[], targetISO: string): number => {
   const target = new Date(targetISO).getTime()
   let best = 0
@@ -26,7 +38,7 @@ const nearestHourIndex = (times: string[], targetISO: string): number => {
       best = i
     }
   }
-  return best
+  return bestDiff <= MAX_HOUR_GAP_MS ? best : -1
 }
 
 /**
@@ -44,7 +56,7 @@ export async function attachWeather(
   const lng = checkpoints.map((c) => c.coord.lng.toFixed(4)).join(',')
   const url =
     `${OPEN_METEO}?latitude=${lat}&longitude=${lng}` +
-    `&hourly=temperature_2m,precipitation&timezone=UTC&forecast_days=3`
+    `&hourly=temperature_2m,precipitation&timezone=UTC&forecast_days=${forecastDays(checkpoints)}`
 
   let blocks: HourlyBlock[]
   try {
@@ -57,9 +69,10 @@ export async function attachWeather(
   }
 
   return checkpoints.map((cp, i) => {
-    const block = blocks[i] ?? blocks[0]
+    const block = blocks[i] // no fallback to another checkpoint's location: missing stays missing
     if (!block?.hourly?.time?.length) return cp
     const h = nearestHourIndex(block.hourly.time, cp.etaISO)
+    if (h < 0) return cp
     const tempC = block.hourly.temperature_2m[h]
     const precipMm = block.hourly.precipitation[h]
     if (tempC == null || precipMm == null) return cp

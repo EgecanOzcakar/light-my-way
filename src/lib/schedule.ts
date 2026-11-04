@@ -1,5 +1,6 @@
 import type { Checkpoint, RouteResult } from '../types'
 import { cumulativeDistancesM, interpolateAlong } from './geo'
+import { clampInterval } from './url'
 
 export interface SampleOptions {
   startISO: string
@@ -17,7 +18,8 @@ const addMinutes = (iso: string, min: number): string =>
  * hazard are left unset — filled in later by the weather step.
  */
 export function sampleCheckpoints(route: RouteResult, opts: SampleOptions): Checkpoint[] {
-  const { startISO, intervalMin, originLabel, destinationLabel } = opts
+  const { startISO, originLabel, destinationLabel } = opts
+  const intervalMin = clampInterval(opts.intervalMin) // guards the loop below against <= 0 / NaN
   const totalMin = route.durationS / 60
   const cumM = cumulativeDistancesM(route.polyline)
   const totalKm = route.distanceM / 1000

@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApp } from '../store'
 import { calculateTrip, GeocodeError } from '../lib/calculate'
-import { encodeRoute, MIN_INTERVAL, MAX_INTERVAL } from '../lib/url'
+import { clampInterval, MIN_INTERVAL, MAX_INTERVAL } from '../lib/url'
 import { toJSON, toCSV, toICS, downloadText } from '../lib/export'
 import { formatDistance, formatDuration, formatClock, formatTemp, formatOffset } from '../lib/format'
 import { SearchField } from './SearchField'
@@ -21,8 +21,17 @@ export function Sidebar(props: Props) {
   const { state, dispatch } = useApp()
   const { from, to, intervalMin } = props
   const [pending, setPending] = useState(false)
+  // Raw text so the field can be cleared while typing; committed (clamped) on blur/run.
+  const [ivText, setIvText] = useState(String(intervalMin))
+  useEffect(() => setIvText(String(intervalMin)), [intervalMin])
+  const commitInterval = (): number => {
+    const iv = ivText.trim() === '' ? intervalMin : clampInterval(Number(ivText))
+    setIvText(String(iv))
+    props.onInterval(iv)
+    return iv
+  }
 
-  async function run(f = from, t = to, iv = intervalMin) {
+  async function run(f = from, t = to, iv = commitInterval()) {
     if (!f.trim() || !t.trim()) return
     setPending(true)
     dispatch({ type: 'RUN_START' })
@@ -31,10 +40,9 @@ export function Sidebar(props: Props) {
         { from: f, to: t, intervalMin: iv },
         state.settings,
       )
-      dispatch({ type: 'RUN_OK', route, checkpoints, warnings })
+      dispatch({ type: 'RUN_OK', query: { from: f, to: t, intervalMin: iv }, route, checkpoints, warnings })
       const recent: RecentRoute = { from: f, to: t, intervalMin: iv, savedISO: new Date().toISOString() }
       dispatch({ type: 'ADD_RECENT', route: recent })
-      window.history.replaceState(null, '', '?' + encodeRoute({ from: f, to: t, intervalMin: iv }))
     } catch (err) {
       const msg =
         err instanceof GeocodeError
@@ -57,23 +65,32 @@ export function Sidebar(props: Props) {
         </button>
       </header>
 
-      <SearchField label="From" value={from} onChange={props.onFrom} />
-      <SearchField label="To" value={to} onChange={props.onTo} />
+      <form
+        className="run-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void run()
+        }}
+      >
+        <SearchField label="From" value={from} onChange={props.onFrom} />
+        <SearchField label="To" value={to} onChange={props.onTo} />
 
-      <label className="field-label">Checkpoint interval (minutes)</label>
-      <input
-        className="field-input"
-        type="number"
-        min={MIN_INTERVAL}
-        max={MAX_INTERVAL}
-        step={5}
-        value={intervalMin}
-        onChange={(e) => props.onInterval(Number(e.target.value))}
-      />
+        <label className="field-label">Checkpoint interval (minutes)</label>
+        <input
+          className="field-input"
+          type="number"
+          min={MIN_INTERVAL}
+          max={MAX_INTERVAL}
+          step={5}
+          value={ivText}
+          onChange={(e) => setIvText(e.target.value)}
+          onBlur={commitInterval}
+        />
 
-      <button className="primary-btn" disabled={pending} onClick={() => run()}>
-        {pending ? 'Calculating…' : '▶ Calculate route'}
-      </button>
+        <button className="primary-btn" type="submit" disabled={pending}>
+          {pending ? 'Calculating…' : '▶ Calculate route'}
+        </button>
+      </form>
 
       {state.route && (
         <>

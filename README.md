@@ -35,21 +35,6 @@ Other scripts: `npm test` (Vitest), `npm run build` (outputs `dist/`),
 
 The app is a static bundle — `npm run build` and host `dist/` anywhere.
 
-## Command-line version
-
-A terminal equivalent lives in `cli/`. It prints the same route summary and
-weather/hazard schedule to stdout.
-
-```bash
-pip install -r requirements.txt
-python -m cli
-```
-
-```bash
-pip install -r requirements-dev.txt
-python -m pytest        # runs the CLI tests
-```
-
 ## Configuration
 
 Open **Settings** in the app to change:
@@ -60,12 +45,21 @@ Open **Settings** in the app to change:
   own OSRM if you self-host.
 - **Units** (metric / imperial) and **theme** (dark / light)
 
+Build-time service URLs (Vite env vars, e.g. in `.env.local`) — all optional,
+defaulting to the public services below:
+
+| Variable | Default |
+| --- | --- |
+| `VITE_GEOCODER_URL` | `https://nominatim.openstreetmap.org` |
+| `VITE_ROUTER_URL` | `https://routing.openstreetmap.de/routed-car` |
+| `VITE_WEATHER_URL` | `https://api.open-meteo.com/v1/forecast` |
+| `VITE_TILE_URL` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` |
+
 ## Project layout
 
 ```
 src/lib/      pure logic — geocode, routing, weather, schedule, hazard, url, export
 src/components/  MapView, Sidebar, SettingsDrawer
-cli/          the Python CLI, mirroring src/lib module-for-module
 docs/         design spec and implementation plan
 ```
 

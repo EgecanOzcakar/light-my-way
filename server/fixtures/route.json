@@ -1,0 +1,7 @@
+{
+  "_comment": "MOCK DATA - parameters for the synthetic truck route served by server/providers/routing.js when ROUTER_API_KEY is unset. Replace by setting the key (see SETUP.md).",
+  "detourFactor": 1.25,
+  "avgTruckKmh": 72,
+  "points": 96,
+  "wiggleDeg": 0.08
+}

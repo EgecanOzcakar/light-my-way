@@ -9,7 +9,7 @@ export const API_BASE = (env.VITE_API_BASE || '').replace(/\/$/, '')
 const viaApi = (path: string, fallback: string): string => (API_BASE ? API_BASE + path : fallback)
 
 export const GEOCODER_URL = env.VITE_GEOCODER_URL || viaApi('/geocode', 'https://nominatim.openstreetmap.org')
-export const ROUTER_URL = env.VITE_ROUTER_URL || viaApi('/route', 'https://routing.openstreetmap.de/routed-car')
+export const ROUTER_URL = env.VITE_ROUTER_URL || viaApi('', 'https://routing.openstreetmap.de/routed-car') // proxy serves /route/v1/driving/…
 export const WEATHER_URL = env.VITE_WEATHER_URL || viaApi('/weather', 'https://api.open-meteo.com/v1/forecast')
 
 const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
